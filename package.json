@@ -1,0 +1,49 @@
+{
+  "name": "nim-v2-electron-demo",
+  "private": true,
+  "version": "0.1.0",
+  "homepage": "https://yunxin.163.com",
+  "author": {
+    "name": "Yunxin",
+    "email": "im@service.netease.com"
+  },
+  "description": "网易云信 Electron IMUIKit",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc && vite build && electron-builder",
+    "preview": "vite preview",
+    "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix"
+  },
+  "dependencies": {
+    "@xkit-yx/utils": "^0.7.2",
+    "dayjs": "^1.11.7",
+    "mitt": "^3.0.1",
+    "mobx": "^6.6.1",
+    "node-nim": "^10.9.53",
+    "vue": "^3.4.21",
+    "vue-router": "^4.5.0",
+    "vue-virtual-scroller": "^2.0.0-beta.8"
+  },
+  "devDependencies": {
+    "@typescript-eslint/eslint-plugin": "^8.26.0",
+    "@typescript-eslint/parser": "^8.23.0",
+    "@vitejs/plugin-vue": "^5.0.4",
+    "electron": "^30.0.1",
+    "electron-builder": "^24.13.3",
+    "eslint": "^9.21.0",
+    "eslint-plugin-import": "^2.31.0",
+    "eslint-plugin-n": "^16.6.2",
+    "eslint-plugin-promise": "^6.6.0",
+    "eslint-plugin-vue": "^9.32.0",
+    "sass": "^1.85.1",
+    "typescript": "^5.2.2",
+    "unplugin-vue-components": "^28.0.0",
+    "vite": "^5.1.6",
+    "vite-plugin-electron": "^0.28.6",
+    "vite-plugin-electron-renderer": "^0.14.5",
+    "vue-eslint-parser": "^9.4.3",
+    "vue-tsc": "^2.0.26"
+  },
+  "main": "dist-electron/main.js"
+}

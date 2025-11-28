@@ -1,0 +1,129 @@
+<template>
+  <Modal
+    :visible="visible"
+    :title="t('setText')"
+    :confirmText="t('okText')"
+    :cancelText="t('cancelText')"
+    :width="550"
+    :height="280"
+    :top="100"
+    :showDefaultFooter="true"
+    @confirm="onConfirm"
+    @cancel="handleClose"
+  >
+    <div class="setting-item-wrapper">
+      <div class="setting-item">
+        <div class="item-left">{{ t("enableCloudConversationText") }}</div>
+        <div class="item-right">
+          <Switch
+            :checked="enableCloudConversation"
+            @change="
+              (value) => {
+                enableCloudConversation = value;
+                onChangeSetting('enableCloudConversation', value);
+              }
+            "
+          />
+        </div>
+      </div>
+      <div class="setting-item">
+        <div class="item-left">{{ t("teamManagerEnableText") }}</div>
+        <div class="item-right">
+          <Switch
+            :checked="teamManagerVisible"
+            @change="
+              (value) => {
+                teamManagerVisible = value;
+                onChangeSetting('teamManagerVisible', value);
+              }
+            "
+          />
+        </div>
+      </div>
+    </div>
+  </Modal>
+</template>
+
+<script lang="ts" setup>
+import Modal from "../../../components/NEUIKit/CommonComponents/Modal.vue";
+import { t } from "../../../components/NEUIKit/utils/i18n";
+import { ref, onMounted } from "vue";
+import { showToast } from "../../../components/NEUIKit/utils/toast";
+import Switch from "../../../components/NEUIKit/CommonComponents/Switch.vue";
+
+interface Props {
+  visible: boolean;
+}
+
+withDefaults(defineProps<Props>(), {
+  visible: false,
+});
+
+// Emits
+interface Emits {
+  (e: "update:visible", visible: boolean): void;
+  (e: "close"): void;
+}
+
+const enableCloudConversation = ref(false);
+const teamManagerVisible = ref(false);
+const switchToEnglishFlag = ref(false);
+
+onMounted(() => {
+  teamManagerVisible.value =
+    localStorage.getItem("teamManagerVisible") !== "off";
+  enableCloudConversation.value =
+    localStorage.getItem("enableCloudConversation") === "on";
+  switchToEnglishFlag.value =
+    localStorage.getItem("switchToEnglishFlag") === "en";
+});
+
+const emit = defineEmits<Emits>();
+
+const onConfirm = () => {};
+
+const handleClose = () => {
+  emit("close");
+};
+
+const onChangeSetting = (key: string, value: boolean) => {
+  localStorage.setItem(key, value ? "on" : "off");
+  showToast({
+    type: "info",
+    message: "重启应用生效",
+  });
+  emit("close");
+};
+</script>
+
+<style scoped>
+.wrapper {
+  background-color: rgb(245, 246, 247);
+  width: 100%;
+  min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.setting-item-wrapper {
+  background: #fff;
+  border-radius: 8px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  color: #000;
+}
+
+.item-left {
+  font-size: 16px;
+}
+
+.box-shadow {
+  height: 1px;
+  background-color: #ebedf0;
+  margin: 0 16px;
+}
+</style>

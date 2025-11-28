@@ -1,0 +1,44 @@
+// @see - https://www.electron.build/configuration/configuration
+{
+  $schema: "https://raw.githubusercontent.com/electron-userland/electron-builder/master/packages/app-builder-lib/scheme.json",
+  appId: "com.netease.nmc.demo",
+  asar: true,
+  productName: "NIM",
+  directories: {
+    output: "release/${version}",
+  },
+  files: ["dist", "dist-electron"],
+  mac: {
+    target: ["dmg"],
+    icon: "src/assets/icon.icns",
+    artifactName: "nim-darwin-${version}-${arch}.${ext}",
+  },
+  win: {
+    target: [
+      {
+        target: "nsis",
+        arch: ["x64"],
+      },
+    ],
+    icon: "src/assets/icon.ico",
+    extraFiles: [
+      {
+        from: "node_modules/node-nim/build/Release",
+        to: ".",
+        filter: ["**/*.dll"],
+      },
+    ],
+    artifactName: "nim-win32-${version}-${arch}.${ext}",
+  },
+  nsis: {
+    oneClick: false,
+    perMachine: false,
+    allowToChangeInstallationDirectory: true,
+    deleteAppDataOnUninstall: false,
+  },
+  linux: {
+    target: ["deb"],
+    icon: "src/assets/icon.png",
+    artifactName: "nim-linux-${version}-${arch}.${ext}",
+  },
+}
