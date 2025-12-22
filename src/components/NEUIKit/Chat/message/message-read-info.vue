@@ -208,7 +208,7 @@ onMounted(() => {
   text-align: center;
   line-height: 20px;
   color: #000;
-  margin-bottom: 16px;
+  margin: 10px 0 10px 0;
   font-size: 14px;
   font-weight: 400;
 }
@@ -228,7 +228,7 @@ onMounted(() => {
 
 .left-column,
 .right-column {
-  width: 50%;
+  width: 150px;
   flex-shrink: 0;
   height: 100%;
   overflow: hidden;
@@ -249,7 +249,7 @@ onMounted(() => {
   width: 100%;
   display: flex;
   align-items: center;
-  padding: 0 5px;
+  padding: 0 3px;
   background-color: #fff;
   box-sizing: border-box;
   overflow: hidden; /* 防止内容溢出 */
@@ -257,7 +257,7 @@ onMounted(() => {
 
 /* 确保Avatar不会撑高容器 */
 .avatar-wrapper {
-  margin-right: 12px;
+  margin-right: 6px;
   flex-shrink: 0;
   cursor: pointer;
   margin-left: 2px;

@@ -47,12 +47,13 @@ const dropdownRef = ref<HTMLElement | null>(null);
 const position = ref({ x: 0, y: 0 });
 const hasBeenShown = ref(false); // 记录是否曾经显示过
 
+const currentPlacement = ref(props.placement);
 const contentStyle = computed<CSSProperties>(() => ({
   position: "fixed",
   left: `${position.value.x}px`,
   top: `${position.value.y}px`,
   zIndex: 2000,
-  transformOrigin: props.placement === "top" ? "bottom" : "top",
+  transformOrigin: currentPlacement.value === "top" ? "bottom" : "top",
   ...props.dropdownStyle,
 }));
 
@@ -88,19 +89,30 @@ const handleClick = async (event: MouseEvent) => {
       // 等待下一帧以确保DOM已更新
       await new Promise((resolve) => requestAnimationFrame(resolve));
 
-      // 获取下拉菜单元素的高度
       const dropdownContent = document.querySelector(
         ".nim-dropdown-content"
       ) as HTMLElement;
       const dropdownHeight = dropdownContent ? dropdownContent.offsetHeight : 0;
+      const dropdownWidth = dropdownContent ? dropdownContent.offsetWidth : 0;
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
 
-      position.value = {
-        x: rect.left,
-        y:
-          props.placement === "top"
-            ? rect.top - dropdownHeight - 4
-            : rect.bottom + 4,
-      };
+      let x = rect.left;
+      let y = rect.bottom + 4;
+      currentPlacement.value = "bottom";
+
+      if (y + dropdownHeight > viewportHeight) {
+        y = rect.top - dropdownHeight - 4;
+        currentPlacement.value = "top";
+      }
+      if (y < 4) {
+        y = 4;
+      }
+      if (x + dropdownWidth > viewportWidth - 4) {
+        x = Math.max(4, viewportWidth - dropdownWidth - 4);
+      }
+
+      position.value = { x, y };
     }
   }
 };
@@ -116,19 +128,30 @@ const handleContextMenu = async (event: MouseEvent) => {
     // 等待下一帧以确保DOM已更新
     await new Promise((resolve) => requestAnimationFrame(resolve));
 
-    // 获取下拉菜单元素的高度
     const dropdownContent = document.querySelector(
       ".nim-dropdown-content"
     ) as HTMLElement;
     const dropdownHeight = dropdownContent ? dropdownContent.offsetHeight : 0;
+    const dropdownWidth = dropdownContent ? dropdownContent.offsetWidth : 0;
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
 
-    position.value = {
-      x: event.clientX,
-      y:
-        props.placement === "top"
-          ? event.clientY - dropdownHeight - 4
-          : event.clientY + 4,
-    };
+    let x = event.clientX;
+    let y = event.clientY + 4;
+    currentPlacement.value = "bottom";
+
+    if (y + dropdownHeight > viewportHeight) {
+      y = event.clientY - dropdownHeight - 4;
+      currentPlacement.value = "top";
+    }
+    if (y < 4) {
+      y = 4;
+    }
+    if (x + dropdownWidth > viewportWidth - 4) {
+      x = Math.max(4, viewportWidth - dropdownWidth - 4);
+    }
+
+    position.value = { x, y };
   }
 };
 

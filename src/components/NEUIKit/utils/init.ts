@@ -22,7 +22,10 @@ export const initIMUIKit = (appkey: string) => {
     debugLevel: "debug",
     apiVersion: "v2",
     basicOption: {
+      // 是否开启云端会话
       enableCloudConversation: enableCloudConversation,
+      // 收到撤回消息时是否减少会话未读数
+      reduceUnreadOnMessageRecall: true,
     },
   });
 
@@ -60,6 +63,10 @@ export const initIMUIKit = (appkey: string) => {
     nim,
     store: uikitStore,
   };
+};
+
+export const releaseIMUIKit = () => {
+  nim?.uninit();
 };
 
 export const getContextState = () => {

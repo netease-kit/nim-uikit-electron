@@ -224,7 +224,7 @@
 
 <script lang="ts" setup>
 /** 消息转发弹窗 */
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import Avatar from "../../CommonComponents/Avatar.vue";
 import Appellation from "../../CommonComponents/Appellation.vue";
 import { t } from "../../utils/i18n";
@@ -457,6 +457,35 @@ onUnmounted(() => {
   teamListWatch();
   recentConversationListWatch();
 });
+
+// 每次打开弹窗时重置选择与留言，避免记住上次内容
+const resetState = () => {
+  selectedId.value = "";
+  selectedItem.value = null;
+  forwardComment.value = "";
+  searchKeyword.value = "";
+  currentTab.value = "recent";
+  forwardConversationId.value = "";
+};
+
+watch(
+  () => props.visible,
+  (visible) => {
+    if (visible) {
+      resetState();
+    }
+  }
+);
+
+watch(
+  () => props.msg,
+  () => {
+    // 当转发的消息发生变化时也重置一次
+    if (props.visible) {
+      resetState();
+    }
+  }
+);
 </script>
 
 <style scoped>

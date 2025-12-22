@@ -1,7 +1,10 @@
 <template>
   <div v-if="visible" class="reply-msg-wrapper">
     <!-- replyMsg 不存在 说明回复的消息被删除或者撤回 -->
-    <div v-if="props.replyMsg?.messageClientId == 'noFind'">
+    <div
+      class="reply-msg-not-find"
+      v-if="props.replyMsg?.messageClientId == 'noFind'"
+    >
       <span>{{ t("replyNotFindText") }}</span>
     </div>
     <Popover
@@ -14,10 +17,10 @@
     >
       <!-- 移除 @click 事件，让 Popover 自己处理点击 -->
       <div class="reply-msg">
-        <div class="reply-msg-name-wrapper">
-          <div v-if="replyMsg" class="reply-msg-name-content">
+        <div v-if="replyMsg" class="reply-msg-name-wrapper">
+          <div class="reply-msg-name-content">
             <Appellation
-              :account="replyMsg?.senderId as string"
+              :account="replyMsg?.senderId || ''"
               :teamId="replyMsg?.receiverId"
               :fontSize="13"
               color="#666666"
@@ -50,7 +53,7 @@
           @click="(e) => e.stopPropagation()"
           class="popover-message-content"
         >
-          <MessageItemContent :msg="replyMsg" />
+          <MessageItemContent :msg="replyMsg" :showReply="false" />
         </div>
       </template>
     </Popover>
@@ -95,6 +98,10 @@ const popoverVisible = ref(false);
   box-sizing: border-box;
 }
 
+.reply-msg-not-find {
+  /* height: 20px; */
+}
+
 .reply-msg-wrapper .reply-msg {
   display: flex;
   flex-direction: column;
@@ -133,6 +140,7 @@ const popoverVisible = ref(false);
   text-overflow: ellipsis;
   white-space: nowrap;
   flex: 1;
+  height: 20px;
 }
 
 .reply-msg-wrapper .reply-msg-name-line {

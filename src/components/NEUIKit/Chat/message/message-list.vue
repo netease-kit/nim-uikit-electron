@@ -64,7 +64,6 @@ const messageListRef = ref<HTMLElement | null>(null);
 let teamWatch = () => {};
 
 onBeforeMount(() => {
-   
   teamWatch = autorun(() => {
     store?.teamStore.teams.get(props.to);
   });
@@ -260,7 +259,7 @@ onUnmounted(() => {
 .message-scroll-list {
   height: 100%;
   box-sizing: border-box;
-  padding: 0 10px 10px 10px;
+  padding: 0 15px 10px 10px;
   overflow-y: auto;
   width: 100%;
   overflow-x: hidden;

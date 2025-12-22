@@ -2,7 +2,7 @@
   <div class="collection-item-content">
     <div class="collection-item-content-top">
       <div class="collection-item-content-top-msg">
-        <MessageItemContent :msg="msg" />
+        <MessageItemContent :msg="msg" :showReply="false" />
       </div>
       <div class="collection-item-content-top-icon">
         <Dropdown trigger="click">
@@ -29,9 +29,7 @@
     </div>
     <div class="collection-item-info">
       <span>{{ collectionData?.senderName }}</span>
-      <span>{{
-        formatDate(collection.updateTime || collection.createTime)
-      }}</span>
+      <span>{{ formatDate(collection.updateTime || collection.createTime) }}</span>
     </div>
   </div>
 </template>
@@ -91,7 +89,7 @@ const collectionData = computed(() => {
 const msg = computed(() => {
   return nim?.messageConverter?.messageDeserialization(
     collectionData.value?.message
-  );
+  ) as V2NIMMessage;
 });
 
 // 菜单项
@@ -119,7 +117,7 @@ const handleMenuClick = (key: string) => {
   emit("menu-click", {
     key,
     collection: props.collection,
-    msg: msg.value,
+    msg: msg.value as V2NIMMessage,
   });
 };
 </script>

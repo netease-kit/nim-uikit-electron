@@ -288,19 +288,17 @@ export class ConversationStore {
         );
       }
 
-      // 先删除内存，防止删除失败导致一些问题
-      this.removeConversation([conversationId]);
-      // 不删除历史消息，让表现跟线上一致，后续可根据需求调整
+      // 先进行云端删除
       await this.nim.conversationService?.deleteConversation(
         conversationId || "",
         false
       );
+      // 云端删除成功后再移除内存
+      this.removeConversation([conversationId]);
       this.logger?.log("deleteConversationActive success");
     } catch (error) {
-      this.logger?.warn(
-        "deleteConversationActive failed but continue: ",
-        error
-      );
+      this.logger?.warn("deleteConversationActive failed", error);
+      throw error as Error;
     }
   }
 
@@ -347,6 +345,45 @@ export class ConversationStore {
         await this.nim.conversationService.getConversationList(offset, limit);
 
       this.addConversation(res.conversationList || []);
+
+      // 当从起点刷新列表时，移除当前内存中不在服务器返回首屏中的会话，避免显示已删除的会话
+      if (offset === 0) {
+        const serverIds = new Set(
+          (res.conversationList || [])
+            .map((item: V2NIMConversation) => item.conversationId || "")
+            .filter((id) => !!id)
+        );
+        const staleIds: string[] = [];
+        this.conversations.forEach((_, id) => {
+          if (!serverIds.has(id)) {
+            staleIds.push(id);
+          }
+        });
+        if (staleIds.length) {
+          this.removeConversation(staleIds);
+        }
+      }
+
+      // 过滤掉已解散或无效的群聊会话：当团队不存在或无效时，移除对应会话
+      const invalidTeamConvIds: string[] = (res.conversationList || [])
+        .filter(
+          (item: V2NIMConversation) =>
+            item.type ===
+            V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+        )
+        .map((item: V2NIMConversation) => {
+          const teamId =
+            this.nim.conversationIdUtil?.parseConversationTargetId(
+              item.conversationId || ""
+            ) || "";
+          const team = this.rootStore.teamStore.teams.get(teamId);
+          return !team || !team.isValidTeam ? item.conversationId || "" : "";
+        })
+        .filter((id: string) => !!id);
+
+      if (invalidTeamConvIds.length) {
+        this.removeConversation(invalidTeamConvIds);
+      }
 
       await this.getP2PMessageReceipt(
         (res.conversationList || [])
@@ -400,7 +437,7 @@ export class ConversationStore {
       this.updateConversation(conversations);
 
       this.logger?.log("getP2PMessageReceipt success", conversationIds, res);
-      return res;
+      return res as V2NIMP2PMessageReadReceipt[];
     } catch (error) {
       this.logger?.error(
         "getP2PMessageReceipt failed: ",

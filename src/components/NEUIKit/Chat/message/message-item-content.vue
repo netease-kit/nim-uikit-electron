@@ -8,10 +8,10 @@
   >
     <!-- 回复消息 -->
     <ReplyMessage
-      :visible="!!props.msg.threadReply"
-      :replyMsg="replyMsg as V2NIMMessageForUI"
+      :visible="showReply && !!props.msg.threadReply"
+      :replyMsg="replyMsg"
     />
-    <MessageText :msg="props.msg"></MessageText>
+    <MessageText :msg="props.msg" />
   </div>
   <!-- 图片消息 -->
   <MessageImage
@@ -76,8 +76,11 @@ const props = withDefaults(
   defineProps<{
     msg: V2NIMMessageForUI & { timeValue?: number };
     replyMsg?: V2NIMMessageForUI;
+    showReply?: boolean;
   }>(),
-  {}
+  {
+    showReply: true,
+  }
 );
 </script>
 

@@ -347,7 +347,7 @@ onMounted(() => {
 
 .form-textarea {
   width: 100%;
-  min-height: 120px;
+  min-height: 130px;
   padding: 12px;
   border: 1px solid #e5e5e5;
   border-radius: 6px;

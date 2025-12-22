@@ -254,7 +254,7 @@ export class MsgStore {
       await this.nim?.messageService?.deleteMessages(
         msgs.map((item) => this.handleMsgForSDK(item)),
         "",
-        true
+        false
       );
       const conversationId = msgs[0].conversationId;
 
@@ -1678,7 +1678,8 @@ export class MsgStore {
 
           if (aitMsgs.includes(messageClientId as string)) {
             aitMsgs = aitMsgs.filter((item) => item !== messageClientId);
-            if (this.rootStore.sdkOptions?.enableCloudConversation) {
+
+            if (this.localOptions?.enableCloudConversation) {
               this.rootStore.conversationStore?.updateConversation([
                 //@ts-ignore serverExtension 缺失，预期内
                 { ...conversation, aitMsgs },

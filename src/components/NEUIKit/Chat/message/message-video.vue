@@ -14,7 +14,7 @@
     <!-- 发送成功状态/未知状态（收藏消息统一为未知状态） -->
     <div
       v-else-if="
-        msg.messageStatus?.errorCode === 200 ||
+        isMessageNoError(msg.messageStatus?.errorCode) ||
         msg.sendingState ==
           V2NIMConst.V2NIMMessageSendingState
             .V2NIM_MESSAGE_SENDING_STATE_UNKNOWN
@@ -94,8 +94,10 @@
 import { ref, computed } from "vue";
 import type { V2NIMMessageForUI } from "../../store/types";
 import { V2NIMConst } from "../../utils/constants";
+import { isMessageNoError } from "../..//utils/msg";
 import Modal from "../../CommonComponents/Modal.vue";
 import { t } from "../../utils/i18n";
+
 // Props
 interface Props {
   msg: V2NIMMessageForUI;
@@ -138,7 +140,7 @@ const handleVideoClick = () => {
   audio?.pause();
 
   if (
-    props.msg.messageStatus?.errorCode === 200 ||
+    isMessageNoError(props.msg.messageStatus?.errorCode) ||
     props.msg.sendingState ===
       V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_UNKNOWN
   ) {

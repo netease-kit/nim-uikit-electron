@@ -57,7 +57,6 @@ const textArr = parseText(props.msg?.text || "", props.msg?.serverExtension);
 .msg-text {
   color: #000;
   text-align: left;
-  overflow-y: auto;
   word-break: break-all;
   word-wrap: break-word;
   white-space: break-spaces;

@@ -75,3 +75,9 @@ export const getMsgContentTipByType = (msg: {
       return translate("unknownMsgText");
   }
 };
+
+// 判定消息是否成功. 历史背景: 当 c++ 端没有得到服务器返回的 aiErrorCode 时, 会返回 0. uikit 兼容视为 200.
+export const isMessageNoError = (errorCode?: number) => {
+  if (errorCode === undefined) return false;
+  return errorCode === 0 || errorCode === 200;
+}

@@ -32,6 +32,30 @@ export const convertSecondsToTime = (seconds: number): string | null => {
   return timeString;
 };
 
+/**
+ * 截断 unicode 字符串，保留指定长度的字符，考虑 emoji 表情
+ */
+export const truncateUnicode = (input: string, maxLength: number): string => {
+  if (!input) return input;
+  if (maxLength <= 0) return "";
+  const AnyIntl: any = Intl as any;
+  const hasSegmenter = typeof AnyIntl.Segmenter === "function";
+  if (hasSegmenter) {
+    const segmenter = new AnyIntl.Segmenter("zh-Hans", { granularity: "grapheme" });
+    const segments: any = segmenter.segment(input);
+    const parts: string[] = [];
+    let count = 0;
+    for (const s of segments as any) {
+      if (count >= maxLength) break;
+      parts.push(s.segment);
+      count++;
+    }
+    return parts.join("");
+  }
+  const codepoints = Array.from(input);
+  return codepoints.slice(0, maxLength).join("");
+};
+
 interface IKeyMap {
   [key: string]: string;
 }

@@ -9,8 +9,10 @@ export interface ModalOptions {
   confirmText?: string;
   width?: string | number;
   height?: string | number;
-  cancelText?: string;
+  cancelText?: string | null;
   top?: string | number;
+  maskClosable?: boolean;
+  showClose?: boolean;
   onConfirm?: () => void;
   onCancel?: () => void;
 }
@@ -30,6 +32,8 @@ export const showModal = (options: ModalOptions) => {
     width = 400,
     height = 180,
     top = 100,
+    maskClosable = true,
+    showClose = true,
     onConfirm,
     onCancel,
   } = options;
@@ -44,6 +48,8 @@ export const showModal = (options: ModalOptions) => {
       width,
       height,
       top,
+      maskClosable,
+      showClose,
       visible: true,
       onConfirm: () => {
         onConfirm?.();
@@ -87,6 +93,22 @@ export const modal = {
           opt.onCancel?.();
           reject();
         },
+      });
+    });
+  },
+  info: (options: ModalOptions | string) => {
+    const opt = typeof options === "string" ? { title: options } : options;
+    return new Promise<void>((resolve) => {
+      showModal({
+        ...opt,
+        cancelText: null,
+        maskClosable: false,
+        showClose: false,
+        onConfirm: () => {
+          opt.onConfirm?.();
+          resolve();
+        },
+        onCancel: undefined,
       });
     });
   },

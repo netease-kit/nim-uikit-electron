@@ -118,6 +118,7 @@ import { toast } from "../../utils/toast";
 import Input from "../../CommonComponents/Input.vue";
 import { V2NIMConst } from "../../utils/constants";
 import { getContextState } from "../../utils/init";
+import { truncateUnicode } from "../../utils/index";
 
 // Props
 interface Props {
@@ -177,6 +178,7 @@ const onSelectedUpdate = (next: string[]) => {
   selectedAccounts.value = next;
 };
 
+
 const createTeamName = (teamMembers: string[]) => {
   if (teamName.value.trim()) {
     return teamName.value.trim();
@@ -192,10 +194,13 @@ const createTeamName = (teamMembers: string[]) => {
 
   const _ownerName =
     store?.userStore.myUserInfo.name || store?.userStore.myUserInfo.accountId;
-  const _teamName = (_ownerName + "、" + _memberNickArr.join("、")).slice(
-    0,
+
+  // 进行 Unicode 安全截取，确保不截断表情符
+  const _teamName = truncateUnicode(
+    _ownerName + "、" + _memberNickArr.join("、"),
     30
   );
+
   return _teamName;
 };
 

@@ -1,18 +1,13 @@
 <template>
-  <a
-    class="msg-file-wrapper"
-    :href="downloadHref"
-    :download="downloadName"
-    @click.prevent="handleDownload"
-  >
+  <a class="msg-file-wrapper" :href="downloadHref" :download="downloadName">
     <div
       :class="!msg.isSelf ? 'msg-file msg-file-in' : 'msg-file msg-file-out'"
     >
       <Icon :type="iconType" :size="32"></Icon>
       <div class="msg-file-content">
         <div class="msg-file-title">
-          <div class="msg-file-title-prefix">{{ name }}</div>
-          <!-- <div class="msg-file-title-suffix">{{ suffixName }}</div> -->
+          <div class="msg-file-title-prefix">{{ baseName }}</div>
+          <div class="msg-file-title-suffix">{{ dotExt }}</div>
         </div>
         <div class="msg-file-size">{{ parseFileSize(size) }}</div>
       </div>
@@ -47,6 +42,22 @@ const {
   size = 0,
 } = (props.msg.attachment as V2NIMMessageFileAttachment) || {};
 
+// 文件名后缀
+const dotExt = computed(() =>
+  ext ? (ext.startsWith(".") ? ext : `.${ext}`) : ""
+);
+
+// 文件名前缀
+const baseName = computed(() => {
+  const n = name || "";
+  const e = dotExt.value;
+  if (!e) return n;
+  if (n.toLowerCase().endsWith(e.toLowerCase())) {
+    return n.slice(0, -e.length);
+  }
+  return n;
+});
+
 // 添加url参数
 const addUrlSearch = (url: string, search: string): string => {
   const urlObj = new URL(url);
@@ -60,51 +71,53 @@ const iconType =
   fileIconMap[getFileType(ext) as keyof typeof fileIconMap] ||
   "icon-weizhiwenjian";
 
-// 文件名前缀
-// const prefixName = name;
-// 文件名后缀
-// const suffixName = ext;
-
 // 下载链接
 const downloadHref = computed(() => {
   const _url = (props.msg.attachment as V2NIMMessageFileAttachment)?.url;
   if (_url) {
-    return addUrlSearch(_url, `download=${name}${ext}`);
+    return addUrlSearch(_url, `download=${name}`);
   }
 });
 
 // 下载文件名
+/**
+ * Generates a display name for a file attachment by combining the base filename with its extension
+ * @param {V2NIMMessageFileAttachment} props.msg.attachment - The file attachment object containing the base filename
+ * @param {string} ext - The file extension to append to the filename
+ * @returns {string} The complete filename combining the base name and extension
+ */
 const downloadName = computed(() => {
-  return (props.msg.attachment as V2NIMMessageFileAttachment)?.name + ext;
+  return (props.msg.attachment as V2NIMMessageFileAttachment)?.name;
 });
 
-const handleDownload = async () => {
-  try {
-    const url = downloadHref.value as string;
-    if (!url) return;
-    const response = await fetch(url, { mode: "cors", credentials: "omit" });
-    if (!response.ok) throw new Error(String(response.status));
-    const blob = await response.blob();
-    const link = document.createElement("a");
-    const objectUrl = window.URL.createObjectURL(blob);
-    link.href = objectUrl;
-    link.download = downloadName.value || "file";
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    window.URL.revokeObjectURL(objectUrl);
-  } catch {
-    const url = downloadHref.value as string;
-    if (url) {
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = downloadName.value || "file";
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-    }
-  }
-};
+// 下载文件
+// const handleDownload = async () => {
+//   try {
+//     const url = downloadHref.value as string;
+//     if (!url) return;
+//     const response = await fetch(url, { mode: "cors", credentials: "omit" });
+//     if (!response.ok) throw new Error(String(response.status));
+//     const blob = await response.blob();
+//     const link = document.createElement("a");
+//     const objectUrl = window.URL.createObjectURL(blob);
+//     link.href = objectUrl;
+//     link.download = downloadName.value || "file";
+//     document.body.appendChild(link);
+//     link.click();
+//     document.body.removeChild(link);
+//     window.URL.revokeObjectURL(objectUrl);
+//   } catch {
+//     const url = downloadHref.value as string;
+//     if (url) {
+//       const link = document.createElement("a");
+//       link.href = url;
+//       link.download = downloadName.value || "file";
+//       document.body.appendChild(link);
+//       link.click();
+//       document.body.removeChild(link);
+//     }
+//   }
+// };
 </script>
 
 <style scoped>
@@ -154,12 +167,14 @@ const handleDownload = async () => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 300px;
+  min-width: 0;
+  flex: 1;
 }
 
 /* 文件名后缀 */
 .msg-file-title-suffix {
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 /* 文件名 */

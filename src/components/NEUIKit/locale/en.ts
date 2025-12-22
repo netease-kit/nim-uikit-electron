@@ -118,6 +118,8 @@ export default {
     "Are you sure you want to delete this collection?",
   noCollectionsText: "No collection",
   teamBannedText: "Message Banned",
+  sensitiveText: "Sensitive word detected",
+
   you: "You",
   pinThisText: "Marked this message",
   delete: "Delete this message",

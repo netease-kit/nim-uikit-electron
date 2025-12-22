@@ -8,6 +8,7 @@
         :subTitle="subTitle"
         :avatar="teamAvatar"
         :conversationType="conversationType"
+        :updateTime="headerUpdateTime"
       />
       <!-- 陌生人提示 -->
       <NotFriendTip
@@ -87,6 +88,7 @@ import { HISTORY_LIMIT, events } from "../utils/constants";
 import { t } from "../utils/i18n";
 import { V2NIMConst } from "../utils/constants";
 import { showToast, toast } from "../utils/toast";
+import { modal } from "../utils/modal";
 import Welcome from "../CommonComponents/Welcome.vue";
 import Icon from "../CommonComponents/Icon.vue";
 import emitter from "../utils/eventBus";
@@ -136,7 +138,7 @@ const selectedConversation = ref("");
 const conversationType = computed(() => {
   return nim?.conversationIdUtil?.parseConversationType(
     selectedConversation.value
-  );
+  ) as V2NIMConversationType;
 });
 
 /**对话方 */
@@ -448,6 +450,8 @@ const loadMoreMsgs = (lastMsg: V2NIMMessage) => {
   }
 };
 
+const headerUpdateTime = ref<number | undefined>(0);
+
 /** 监听聊天标题 */
 const chatHeaderWatch = autorun(() => {
   if (
@@ -458,6 +462,7 @@ const chatHeaderWatch = autorun(() => {
       account: to.value,
     }) as string;
     subTitle.value = "";
+    headerUpdateTime.value = store?.userStore.myUserInfo.updateTime;
   } else if (
     conversationType.value ===
     V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
@@ -465,6 +470,7 @@ const chatHeaderWatch = autorun(() => {
     const team = store?.teamStore.teams.get(to.value);
     subTitle.value = `(${team?.memberCount || 0}${t("personUnit")})`;
     title.value = team?.name || "";
+    headerUpdateTime.value = team?.updateTime;
   }
 });
 
@@ -479,10 +485,11 @@ const resetState = () => {
   loadingMore.value = false;
   title.value = "";
   subTitle.value = "";
+  headerUpdateTime.value = undefined;
 };
 
 // 获取群成员
-const getTeamMember = () => {
+const getTeamMember = async () => {
   if (
     conversationType.value ===
       V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
@@ -490,13 +497,33 @@ const getTeamMember = () => {
   ) {
     const team = store?.teamStore.teams.get(to.value);
 
-    store?.teamMemberStore.getTeamMemberActive({
-      teamId: to.value,
-      queryOption: {
-        limit: Math.max(team?.memberLimit || 0, 200),
-        roleQueryType: 0,
-      },
-    });
+    try {
+      await store?.teamMemberStore.getTeamMemberActive({
+        teamId: to.value,
+        queryOption: {
+          limit: Math.max(team?.memberLimit || 0, 200),
+          roleQueryType: 0,
+        },
+      });
+    } catch (error: any) {
+      if (error?.code === 109404) {
+        await modal.info({
+          title: t("tipText"),
+          content: "当前群聊已不存在",
+        });
+        if (store?.localOptions?.enableCloudConversation) {
+          await store?.conversationStore?.deleteConversationActive(
+            selectedConversation.value
+          );
+        } else {
+          await store?.localConversationStore?.deleteConversationActive(
+            selectedConversation.value
+          );
+        }
+        store?.uiStore.unselectConversation();
+      }
+      throw error;
+    }
   }
 };
 /** 处理回复消息 */
@@ -677,11 +704,6 @@ const selectedConversationWatch = autorun(() => {
           await nextTick();
           isFirstLoad.value = false;
           emitter.emit(events.ON_SCROLL_BOTTOM);
-          // 初始化滚动到底部
-          // const timer = setTimeout(() => {
-          //   emitter.emit(events.ON_SCROLL_BOTTOM);
-          //   clearTimeout(timer);
-          // }, 100);
         });
         getTeamMember();
       }
@@ -879,7 +901,7 @@ onUnmounted(() => {
 }
 
 .chat-slide-bar {
-  width: 52px;
+  width: 60px;
   height: 100%;
   border-left: 1px solid #e4e9f2;
   padding: 13px 10px;

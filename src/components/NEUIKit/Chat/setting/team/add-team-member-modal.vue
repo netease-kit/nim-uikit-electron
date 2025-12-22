@@ -116,7 +116,7 @@ const teamMembers = computed(() => selectedAccounts.value);
 
 // 受控更新入口（支持最大数量提示）
 const onSelectedUpdate = (next: string[]) => {
-  if (next.length >= 200) {
+  if (next.length > 200) {
     toast.info(t("maxSelectedText"));
     return;
   }

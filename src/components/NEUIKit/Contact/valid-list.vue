@@ -10,64 +10,34 @@
       />
       <template v-else>
         <div class="valid-item" v-for="msg in validMsg" :key="msg.timestamp">
-          <!-- 好友申请 已同意 -->
+          <!-- 好友申请 已同意/已拒绝 -->
           <template
             v-if="
               msg.status ===
-              V2NIMConst.V2NIMFriendAddApplicationStatus
-                .V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED
+                V2NIMConst.V2NIMFriendAddApplicationStatus
+                  .V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED ||
+              msg.status ===
+                V2NIMConst.V2NIMFriendAddApplicationStatus
+                  .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED
             "
           >
             <div class="valid-item-left">
-              <Avatar :account="msg.applicantAccountId" />
+              <Avatar :account="getDisplayAccountId(msg)" />
               <div class="valid-name-container">
                 <div class="valid-name">
-                  <Appellation :account="msg.applicantAccountId" />
+                  <Appellation :account="getDisplayAccountId(msg)" />
                 </div>
-                <div class="valid-action">{{ t("applyFriendText") }}</div>
+                <div class="valid-action">
+                  {{ getStatusActionText(msg) }}
+                </div>
               </div>
             </div>
-            <div class="valid-state">
-              <Icon type="icon-yidu" />
-              <span class="valid-state-text">{{ t("acceptResultText") }}</span>
+            <div class="valid-state" v-if="getStatusConfig(msg).showState">
+              <Icon :type="getStatusConfig(msg).icon" />
+              <span class="valid-state-text">{{
+                getStatusConfig(msg).text
+              }}</span>
             </div>
-          </template>
-          <!--好友申请 已拒绝 -->
-          <template
-            v-else-if="
-              msg.status ===
-              V2NIMConst.V2NIMFriendAddApplicationStatus
-                .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED
-            "
-          >
-            <template v-if="isMeApplicant(msg)">
-              <div class="valid-item-left">
-                <Avatar :account="msg.recipientAccountId" />
-                <div class="valid-name-container">
-                  <div class="valid-name">
-                    <Appellation :account="msg.recipientAccountId" />
-                  </div>
-                  <div class="valid-action">{{ t("beRejectResultText") }}</div>
-                </div>
-              </div>
-            </template>
-            <template v-else>
-              <div class="valid-item-left">
-                <Avatar :account="msg.applicantAccountId" />
-                <div class="valid-name-container">
-                  <div class="valid-name">
-                    <Appellation :account="msg.applicantAccountId" />
-                  </div>
-                  <div class="valid-action">{{ t("applyFriendText") }}</div>
-                </div>
-              </div>
-              <div class="valid-state">
-                <Icon type="icon-shandiao" />
-                <span class="valid-state-text">{{
-                  t("rejectResultText")
-                }}</span>
-              </div>
-            </template>
           </template>
           <!-- 好友申请 未处理 -->
           <template
@@ -84,7 +54,9 @@
                   <div class="valid-name">
                     <Appellation :account="msg.applicantAccountId" />
                   </div>
-                  <div class="valid-action">{{ t("applyFriendText") }}</div>
+                  <div class="valid-action">
+                    {{ t("applyFriendText") }}
+                  </div>
                 </div>
               </div>
               <div class="valid-buttons">
@@ -136,9 +108,66 @@ const isMeApplicant = (data: V2NIMFriendAddApplicationForUI) => {
   return data.applicantAccountId === store?.userStore.myUserInfo.accountId;
 };
 
+/** 获取要显示的账号ID（根据是否自己发起来决定显示申请人还是接收人） */
+const getDisplayAccountId = (msg: V2NIMFriendAddApplicationForUI) => {
+  return isMeApplicant(msg) ? msg.recipientAccountId : msg.applicantAccountId;
+};
+
+/** 获取已同意状态的文案 */
+const getAgreedActionText = (msg: V2NIMFriendAddApplicationForUI) => {
+  return isMeApplicant(msg) ? t("applyFriendText") : t("passResultText");
+};
+
+/** 获取已拒绝状态的文案 */
+const getRejectedActionText = (msg: V2NIMFriendAddApplicationForUI) => {
+  return isMeApplicant(msg) ? t("beRejectResultText") : t("applyFriendText");
+};
+
+/** 获取状态操作文案（统一处理已同意/已拒绝） */
+const getStatusActionText = (msg: V2NIMFriendAddApplicationForUI) => {
+  const isAgreed =
+    msg.status ===
+    V2NIMConst.V2NIMFriendAddApplicationStatus
+      .V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED;
+  return isAgreed ? getAgreedActionText(msg) : getRejectedActionText(msg);
+};
+
+/** 获取状态配置（图标、文案、是否显示状态） */
+const getStatusConfig = (msg: V2NIMFriendAddApplicationForUI) => {
+  if (
+    msg.status ===
+    V2NIMConst.V2NIMFriendAddApplicationStatus
+      .V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED
+  ) {
+    return {
+      icon: "icon-yidu",
+      text: t("acceptResultText"),
+      showState: true,
+    };
+  }
+
+  if (
+    msg.status ===
+    V2NIMConst.V2NIMFriendAddApplicationStatus
+      .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED
+  ) {
+    return {
+      icon: "icon-shandiao",
+      text: t("rejectResultText"),
+      showState: !isMeApplicant(msg),
+    };
+  }
+
+  return {
+    icon: "",
+    text: "",
+    showState: false,
+  };
+};
+
 /** 拒绝好友申请 */
 const handleRejectApplyFriendClick = async (
-  msg: V2NIMFriendAddApplicationForUI
+  msg: V2NIMFriendAddApplicationForUI,
 ) => {
   applyFriendLoading.value = true;
   try {
@@ -153,7 +182,7 @@ const handleRejectApplyFriendClick = async (
 
 /** 接受好友申请 */
 const handleAcceptApplyFriendClick = async (
-  msg: V2NIMFriendAddApplicationForUI
+  msg: V2NIMFriendAddApplicationForUI,
 ) => {
   applyFriendLoading.value = true;
   try {
@@ -165,13 +194,13 @@ const handleAcceptApplyFriendClick = async (
     }
 
     const textMsg = nim?.messageCreator?.createTextMessage(
-      t("passFriendAskText")
+      t("passFriendAskText"),
     ) as unknown as V2NIMMessage;
 
     await store?.msgStore.sendMessageActive({
       msg: textMsg,
       conversationId: nim?.conversationIdUtil?.p2pConversationId(
-        msg.operatorAccountId || ''
+        msg.operatorAccountId || "",
       ) as string,
     });
   } catch (error) {

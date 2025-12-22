@@ -93,7 +93,7 @@ class RootStore {
             appName: packageJson.name,
             needStringify: false,
           });
-    this.logger?.log("store init", {
+    this.logger?.log("IMUIKit Version 10.0.0", {
       localOptions: this.localOptions,
     });
 
@@ -117,7 +117,6 @@ class RootStore {
     this.storageStore = new StorageStore(this, nim);
     this.subscriptionStore = new SubscriptionStore(this, nim);
 
-    // 埋点上报
     const reportComponents = [
       "ContactKit",
       "ConversationKit",

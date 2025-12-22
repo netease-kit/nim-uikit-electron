@@ -111,6 +111,7 @@ export default {
   transformTeamFailedText: "转让群主失败",
   transformTeamText: "选择转让成员",
   teamBannedText: "群禁言",
+  sensitiveText: "触发敏感词",
   saveText: "保存",
   setText: "设置",
   failText: "失败",

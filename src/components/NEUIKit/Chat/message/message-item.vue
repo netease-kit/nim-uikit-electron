@@ -58,7 +58,7 @@
     >
       {{ t("you") + t("recall") }}
     </div>
-
+    <!-- 撤回消息-不可重新编辑 本端撤回 超时-->
     <div
       v-else-if="
         msg.messageType ===
@@ -84,7 +84,7 @@
         {{ appellation + " " + t("recall") }}
       </div>
     </div>
-
+    <!-- 常规消息 -->
     <div
       v-else
       class="msg-common"
@@ -274,6 +274,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: #999;
   margin: 0 8px;
+  height: 20px;
 }
 
 .msg-content .msg-name-left {
@@ -333,7 +334,7 @@ onUnmounted(() => {
   margin-right: 8px;
   color: #666666;
   font-size: 14px;
-  margin: 10px 0;
+  margin: 0px 0px 30px 0px;
 }
 
 .recall-text {

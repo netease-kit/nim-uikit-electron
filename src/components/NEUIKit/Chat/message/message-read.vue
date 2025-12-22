@@ -41,10 +41,16 @@
       class="msg-read"
     >
       <Popover
+        ref="teamPopoverRef"
         trigger="click"
         placement="top"
         :show-arrow="false"
         :offset="teamMsgRotateDeg == 360 || teamMsgRotateDeg == 0 ? 10 : 30"
+        :bodyStyle="{
+          padding: '5px 5px 0 5px',
+          overflow: 'hidden',
+          maxWidth: '315px',
+        }"
       >
         <div class="icon-read-wrapper" v-if="teamMsgRotateDeg == 360">
           <Icon type="icon-read" :size="14"></Icon>
@@ -90,7 +96,7 @@
 <script lang="ts" setup>
 /** 消息已读未读组件 */
 
-import { computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref, onMounted, onUnmounted, watch, nextTick } from "vue";
 import type { V2NIMMessageForUI } from "../../store/types";
 import Icon from "../../CommonComponents/Icon.vue";
 //@ts-ignore
@@ -125,6 +131,7 @@ const conversationType = nim?.conversationIdUtil?.parseConversationType(
 
 /** 单聊消息已读未读，用于UI变更 */
 const p2pMsgRotateDeg = ref(0);
+const teamPopoverRef = ref<any>();
 
 const showUserCardModal = ref(false);
 const selectedAccount = ref<string>("");
@@ -198,6 +205,19 @@ onMounted(() => {
 onUnmounted(() => {
   p2pMsgReadWatch();
 });
+
+watch(
+  () => teamMsgRotateDeg.value,
+  (newDeg, oldDeg) => {
+    if (oldDeg === 0 && newDeg !== 0) {
+      nextTick(() => {
+        if (teamPopoverRef?.value?.updatePosition) {
+          teamPopoverRef.value.updatePosition();
+        }
+      });
+    }
+  }
+);
 </script>
 
 <style scoped>
@@ -271,5 +291,6 @@ onUnmounted(() => {
 
 .msg-read-tip {
   color: #000;
+  padding: 5px;
 }
 </style>

@@ -49,7 +49,6 @@ const { store } = getContextState();
 
 const avatarSize = props.size || 42;
 const user = ref<V2NIMUser>();
-
 const appellation = ref();
 
 const uninstallUserInfoWatch = autorun(async () => {
@@ -58,7 +57,6 @@ const uninstallUserInfoWatch = autorun(async () => {
       user.value = data;
     });
   }
-
   appellation.value = store?.uiStore
     .getAppellation({
       account: props.account,
@@ -72,7 +70,6 @@ const avatarUrl = computed(() => {
   if (props.account) {
     user.value = store?.userStore?.users?.get(props.account);
   }
-
   return props.avatar || user.value?.avatar;
 });
 
@@ -119,6 +116,6 @@ onUnmounted(() => {
 
 .avatar-name-text {
   color: #fff;
-  size: 14px;
+  font-size: 14px;
 }
 </style>

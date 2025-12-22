@@ -289,7 +289,7 @@ onMounted(() => {
         .getTeamMemberActive({
           teamId: teamId,
           queryOption: {
-            limit: 200,
+            limit: Math.max(team.value?.memberLimit || 0, 200),
             roleQueryType: 0,
           },
         })

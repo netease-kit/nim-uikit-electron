@@ -35,7 +35,7 @@
             <div class="footer" v-if="$slots.footer || showDefaultFooter">
               <slot name="footer">
                 <div class="buttons" v-if="showDefaultFooter">
-                  <div class="button cancel" @click="handleCancelClick">
+                  <div class="button cancel" v-if="cancelText !== null" @click="handleCancelClick">
                     {{ cancelText }}
                   </div>
                   <div
@@ -64,7 +64,7 @@ import { computed, type CSSProperties } from "vue";
 interface Props {
   title?: string;
   confirmText?: string;
-  cancelText?: string;
+  cancelText?: string | null;
   visible: boolean;
   width?: string | number;
   height?: string | number;

@@ -144,10 +144,12 @@ const props = withDefaults(
   defineProps<{
     account?: string;
     visible?: boolean;
+    nick?: string;
   }>(),
   {
     account: "",
     visible: false,
+    nick: "",
   }
 );
 

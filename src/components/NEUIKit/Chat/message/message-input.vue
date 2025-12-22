@@ -730,6 +730,39 @@ const onImageSelected = async (event: Event) => {
   const imagePath = file.path;
   const name = file.name;
   const sceneName = "nim_default_im";
+  const maxImageSize = 20 * 1024 * 1024;
+
+  // 超过20M的图片，在渲染时 nos 不支持获取缩略图， 故发送文件消息
+  if (file.size > maxImageSize) {
+    try {
+      const fileMsg = nim?.messageCreator?.createFileMessage(
+        imagePath,
+        name,
+        sceneName
+      );
+
+      await store?.msgStore.sendMessageActive({
+        msg: fileMsg,
+        conversationId: props.conversationId,
+        progress: () => true,
+        sendBefore: () => {
+          scrollBottom();
+        },
+      });
+
+      scrollBottom();
+    } catch (err: any) {
+      handleSendMsgError(err?.code);
+    } finally {
+      if (Array.isArray(imageInput.value)) {
+        imageInput.value[0].value = "";
+      } else if (imageInput.value) {
+        imageInput.value.value = "";
+      }
+      scrollBottom();
+    }
+    return;
+  }
 
   const imageInfo: {
     width: number;
@@ -745,8 +778,8 @@ const onImageSelected = async (event: Event) => {
       imagePath,
       name,
       sceneName,
-      height,
-      width
+      width,
+      height
     );
 
     await store?.msgStore.sendMessageActive({
@@ -788,6 +821,7 @@ watch(
       teamMembers.value = [];
       mentionPopoverVisible.value = false;
       inputText.value = "";
+      //移除上一次监听
       teamWatch();
 
       teamWatch = autorun(() => {

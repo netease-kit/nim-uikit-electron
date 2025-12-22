@@ -35,10 +35,11 @@ const iconType = attachment?.type == 1 ? "icon-yuyin8" : "icon-shipin8";
 .g2-message-status {
   margin: 0 7px;
   font-size: 14px;
+  color: #000000;
 }
 
 /* 音视频消息时长 */
 .g2-message-duration {
-  color: #666;
+  color: #000000;
 }
 </style>

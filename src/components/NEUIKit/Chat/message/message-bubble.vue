@@ -10,7 +10,8 @@
             props.msg.isSelf &&
             props.msg.sendingState ===
               V2NIMConst.V2NIMMessageSendingState
-                .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED
+                .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED &&
+            props.msg.messageStatus?.errorCode !== 195002
           "
           :msg="msg"
         />
@@ -31,7 +32,7 @@
       </div>
       <div
         v-if="
-          props.msg.messageStatus?.errorCode === 200 ||
+          isMessageNoError(props.msg.messageStatus?.errorCode) ||
           props.msg.sendingState ===
             V2NIMConst.V2NIMMessageSendingState
               .V2NIM_MESSAGE_SENDING_STATE_SENDING
@@ -62,7 +63,8 @@
             V2NIMConst.V2NIMMessageSendingState
               .V2NIM_MESSAGE_SENDING_STATE_FAILED ||
           props.msg.messageStatus?.errorCode === 102426 ||
-          props.msg.messageStatus?.errorCode === 104404
+          props.msg.messageStatus?.errorCode === 104404 ||
+          props.msg.messageStatus?.errorCode === 195002
         "
         class="msg-failed-wrapper"
       >
@@ -117,6 +119,7 @@
 import { onMounted, onUnmounted, ref, computed } from "vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import { events } from "../../utils/constants";
+import { isMessageNoError } from "../../utils/msg";
 import { autorun } from "mobx";
 import type { V2NIMMessageForUI } from "../../store/types";
 import { V2NIMConst } from "../../utils/constants";
@@ -152,6 +155,8 @@ const errorTipText = computed(() => {
     return t("sendFailWithDeleteText");
   } else if (props.msg.messageStatus?.errorCode === 108306) {
     return t("teamBannedText");
+  } else if (props.msg.messageStatus?.errorCode === 195002) {
+    return t("sensitiveText");
   } else {
     return t("msgNetworkErrorText");
   }
@@ -227,10 +232,11 @@ const msgActions = computed(() => {
       show:
         props.msg.messageType !==
           V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
-        props.msg &&
-        props.msg.sendingState ===
+        props.msg.sendingState !==
           V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED,
+            .V2NIM_MESSAGE_SENDING_STATE_SENDING &&
+        props.msg &&
+        isMessageNoError(props.msg.messageStatus?.errorCode),
       iconType: "icon-collection",
     },
   ];

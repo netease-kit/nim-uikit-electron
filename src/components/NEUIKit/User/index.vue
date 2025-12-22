@@ -2,6 +2,7 @@
   <div class="user-page">
     <div class="user-avatar-container">
       <Avatar
+        :key="myUserInfo?.updateTime"
         :account="userAccount"
         :avatar="userAvatar"
         size="36"

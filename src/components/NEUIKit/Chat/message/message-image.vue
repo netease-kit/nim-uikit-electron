@@ -28,7 +28,7 @@
         :src="msg.previewImg || thumbImageUrl || imageUrl"
       />
     </div>
-    <div v-else-if="props.msg.messageStatus?.errorCode === 200">
+    <div v-else-if="isMessageNoError(msg.messageStatus?.errorCode)">
       <img
         v-if="thumbImageUrl || imageUrl"
         class="msg-image"
@@ -66,6 +66,7 @@
 /** 图片消息 */
 import { ref, computed, watch, onMounted } from "vue";
 import { V2NIMConst } from "../../utils/constants";
+import { isMessageNoError } from "../../utils/msg";
 import PreviewImage from "../../CommonComponents/PreviewImage.vue";
 import type { V2NIMMessageImageAttachment } from "node-nim/types/v2_def/v2_nim_struct_def";
 import type { V2NIMMessageForUI } from "../../store/types";
@@ -175,13 +176,20 @@ const handleImageThumbUrl = (attachment: V2NIMMessageImageAttachment) => {
     if (width && height) {
       nim?.storageService
         ?.getImageThumbUrl(attachment, {
-          height: 200,
-          width: Math.floor((200 * width) / height),
+          height: 400,
+          width: Math.floor((400 * width) / height),
         })
+        /**
+         * Callback function that updates the thumbImageUrl ref with the URL from the response
+         * @param {Object} res - The response object containing the URL
+         * @param {string} res.url - The URL to set as the thumbnail image
+         */
         .then((res) => {
           thumbImageUrl.value = res.url;
         })
-        .catch(() => {});
+        .catch((error) => {
+          console.log("getImageThumbUrl error", error);
+        });
     }
   } else {
     thumbImageUrl.value = attachment?.url as string;

@@ -74,7 +74,7 @@
     />
     <UserCardModal
       v-if="!!selectedAccount"
-      :visible="!!selectedAccount"
+      :visible="showUserCardModal"
       :account="selectedAccount"
       @close="selectedAccount = ''"
     />
@@ -182,6 +182,11 @@ const teamAtMode = computed(() => {
     text:
       ext[ALLOW_AT] === "manager" ? t("teamOwnerAndManagerText") : t("teamAll"),
   };
+});
+
+// 控制是否显示用户名片弹窗（排除点击自己的头像）
+const showUserCardModal = computed(() => {
+  return !!selectedAccount.value && selectedAccount.value !== store?.userStore.myUserInfo.accountId;
 });
 
 // 群禁言

@@ -78,7 +78,7 @@
             {{ t("manager") }}
           </div>
           <div
-            v-if="isShowRemoveBtn(item) && isHovering(item)"
+            v-if="!isUIKitGroup && isShowRemoveBtn(item) && isHovering(item)"
             class="btn-remove"
             @click="
               () => {
@@ -196,6 +196,15 @@ const isHovering = (item: V2NIMTeamMember) => {
   // 普通成员不能hover任何人
   return false;
 };
+
+// 是否为讨论组
+const isUIKitGroup = computed(() => {
+  if (team.value?.serverExtension) {
+    // 有这个标识的就是讨论组
+    return team.value.serverExtension.indexOf('im_ui_kit_group":true') > -1
+  }
+  return false
+})
 
 // 移除群成员
 const removeTeamMember = (account: string) => {

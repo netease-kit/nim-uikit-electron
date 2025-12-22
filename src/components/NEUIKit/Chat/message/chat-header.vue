@@ -1,6 +1,7 @@
 <template>
   <div class="nav-bar-wrapper">
     <div
+      :key="to"
       :style="{
         cursor:
           props.conversationType ===
@@ -10,7 +11,13 @@
       }"
       @click="onAvatarClick"
     >
-      <Avatar size="36" :account="to" :avatar="avatar" />
+      <!-- headerUpdateTime保证当前对话方资料更新时 头像能变化 -->
+      <Avatar
+        size="36"
+        :account="to"
+        :avatar="avatar"
+        :key="headerUpdateTime"
+      />
     </div>
 
     <div class="title-container">
@@ -49,6 +56,7 @@ const props = withDefaults(
     to: string;
     avatar?: string;
     conversationType: V2NIMConversationType;
+    headerUpdateTime?: number;
   }>(),
   {
     subTitle: "",

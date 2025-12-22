@@ -86,6 +86,7 @@ import { t } from "../../utils/i18n";
 import { toast } from "../../utils/toast";
 import { V2NIMConst } from "../../utils/constants";
 import { getContextState } from "../../utils/init";
+import { truncateUnicode } from "../../utils/index";
 
 // Props
 interface Props {
@@ -132,6 +133,7 @@ const onSelectedUpdate = (next: string[]) => {
   selectedAccounts.value = next;
 };
 
+
 // 群头像
 const createTeamAvatar = () => {
   const teamAvatarArr = [
@@ -160,8 +162,10 @@ const createTeamName = (teamMembers: string[]) => {
 
   const _ownerName =
     store?.userStore.myUserInfo.name || store?.userStore.myUserInfo.accountId;
-  const _teamName = (_ownerName + "、" + _memberNickArr.join("、")).slice(
-    0,
+
+  // 进行 Unicode 安全截取，确保不截断表情符
+  const _teamName = truncateUnicode(
+    _ownerName + "、" + _memberNickArr.join("、"),
     30
   );
   return _teamName;
