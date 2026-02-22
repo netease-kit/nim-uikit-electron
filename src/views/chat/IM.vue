@@ -1,5 +1,11 @@
 <template>
   <div class="container-wrapper">
+    <!-- 关闭确认对话框 -->
+    <CloseConfirmationModal
+      :visible="showCloseConfirmation"
+      @close-action-selected="handleCloseActionSelected"
+    />
+    
     <div class="container">
       <!-- IMUIKIT 相关内容 -->
       <div class="header drag-region">
@@ -116,6 +122,7 @@ import Search from "../../components/NEUIKit/Search/index.vue";
 import Concat from "../../components/NEUIKit/Contact/index.vue";
 import UserAvatar from "../../components/NEUIKit/User/index.vue";
 import CollectionList from "../../components/NEUIKit/Chat/collection/index.vue";
+import CloseConfirmationModal from "./components/close-confirmation-modal.vue";
 import { t } from "../../components/NEUIKit/utils/i18n";
 import "./iconfont.css";
 import { ref, onMounted, onUnmounted } from "vue";
@@ -124,6 +131,7 @@ import SettingsMenu from "./components/setting.vue";
 import Tip from "./components/tip.vue";
 
 import { getContextState } from "../../components/NEUIKit/utils/init";
+import { onNotificationClick } from "../../components/NEUIKit/utils/electron";
 
 const { store } = getContextState();
 
@@ -132,7 +140,17 @@ const model = ref("chat");
 const totalUnreadCount = ref(0);
 const totalSysMsgUnreadCount = ref(0);
 
-const conversation = ref<HTMLElement | null>(null);
+// 窗口关闭确认对话框
+const showCloseConfirmation = ref(false);
+
+// 处理关闭行为选择
+const handleCloseActionSelected = (action: 'minimize' | 'quit' | 'cancel', remember: boolean) => {
+  showCloseConfirmation.value = false;
+  
+  if (window.electronAPI) {
+    window.electronAPI.windowClose.sendCloseActionSelected(action, remember);
+  }
+};
 
 // 会话列表宽度，支持拖拽--------------
 const conversationWidth = ref(250);
@@ -172,6 +190,22 @@ const enableCloudConversation = store?.localOptions.enableCloudConversation;
 // autorun监听器
 let totalUnreadCountWatch = () => {};
 let totalSysMsgUnreadCountWatch = () => {};
+// 通知点击事件监听器清理函数
+let removeNotificationClickListener = () => {};
+
+/**
+ * 处理通知点击事件 - 跳转到对应会话
+ * @param conversationId 会话 ID
+ */
+const handleNotificationClick = (conversationId?: string) => {
+  if (!conversationId) {
+    return;
+  }
+  // 切换到聊天模式
+  model.value = 'chat';
+  // 选中对应的会话
+  store?.uiStore.selectConversation(conversationId);
+};
 
 // 生命周期钩子
 onMounted(() => {
@@ -191,12 +225,24 @@ onMounted(() => {
     totalSysMsgUnreadCount.value =
       store?.sysMsgStore?.getTotalUnreadMsgsCount() || 0;
   });
+  
+  // 监听主进程请求显示关闭确认对话框
+  if (window.electronAPI) {
+    window.electronAPI.windowClose.onRequestCloseConfirmation(() => {
+      showCloseConfirmation.value = true;
+    });
+  }
+
+  // 监听通知点击事件
+  removeNotificationClickListener = onNotificationClick(handleNotificationClick);
 });
 
 onUnmounted(() => {
   // 清理autorun监听
   totalUnreadCountWatch();
   totalSysMsgUnreadCountWatch();
+  // 清理通知点击事件监听
+  removeNotificationClickListener();
   document.removeEventListener("mousemove", onMouseMove);
   document.removeEventListener("mouseup", onMouseUp);
   document.body.classList.remove("no-select");

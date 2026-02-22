@@ -104,9 +104,11 @@ export class FriendStore {
     try {
       this.logger?.log("getAddApplicationListActive, option: ", options);
       const res = await this.nim.friendService?.getAddApplicationList(options);
-      this.rootStore.sysMsgStore.addFriendApplyMsg(res.infos);
+      if (res?.infos) {
+        this.rootStore.sysMsgStore.addFriendApplyMsg(res.infos);
+      }
       this.logger?.log("getAddApplicationListActive success", res);
-      return res;
+      return res as V2NIMFriendAddApplicationResult;
     } catch (error) {
       this.logger?.error("getAddApplicationListActive failed: ", error);
       throw error;
@@ -174,9 +176,9 @@ export class FriendStore {
           ...application,
           status:
             V2NIMConst.V2NIMFriendAddApplicationStatus
-              .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED
+              .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED,
         },
-      ])
+      ]);
       this.logger?.log(
         "rejectFriendApplyActive success",
         application,
@@ -290,6 +292,7 @@ export class FriendStore {
     this.addFriend([friend]);
     // 如果存在系统消息，则更新系统消息，这里只能自己是被申请者
     this.rootStore.sysMsgStore.updateFriendApplyMsg([
+      //@ts-ignore
       {
         operatorAccountId: this.rootStore.userStore.myUserInfo.accountId,
         applicantAccountId: friend.accountId as string,

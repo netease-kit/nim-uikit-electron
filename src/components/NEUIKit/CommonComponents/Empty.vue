@@ -1,6 +1,7 @@
 <template>
   <div :style="emptyStyle" class="empty-wrapper">
     <img
+      v-if="showImage"
       class="empty-img"
       src="https://yx-web-nosdn.netease.im/common/e0f58096f06c18cdd101f2614e6afb09/empty.png"
     />
@@ -17,6 +18,10 @@ defineProps({
   emptyStyle: {
     type: Object,
     default: () => {},
+  },
+  showImage: {
+    type: Boolean,
+    default: true,
   },
 });
 </script>

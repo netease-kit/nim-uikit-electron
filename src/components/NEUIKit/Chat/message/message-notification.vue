@@ -21,8 +21,7 @@ const { store } = getContextState();
 
 // 群id
 const teamId =
-  props.msg.conversationType ===
-  V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+  props.msg.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
     ? props.msg.receiverId
     : "";
 
@@ -55,12 +54,11 @@ const notificationContentWatch = autorun(() => {
         if (team.inviteMode !== undefined) {
           content.push(
             `${t("updateTeamInviteMode")}“${
-              team.inviteMode ===
-              V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_ALL
+              team.inviteMode === V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_ALL
                 ? t("teamAll")
                 : teamManagerVisible
-                ? t("teamOwnerAndManagerText")
-                : t("teamOwner")
+                  ? t("teamOwnerAndManagerText")
+                  : t("teamOwner")
             }”`
           );
         }
@@ -71,8 +69,8 @@ const notificationContentWatch = autorun(() => {
               V2NIMConst.V2NIMTeamUpdateInfoMode.V2NIM_TEAM_UPDATE_INFO_MODE_ALL
                 ? t("teamAll")
                 : teamManagerVisible
-                ? t("teamOwnerAndManagerText")
-                : t("teamOwner")
+                  ? t("teamOwnerAndManagerText")
+                  : t("teamOwner")
             }”`
           );
         }
@@ -80,11 +78,24 @@ const notificationContentWatch = autorun(() => {
           content.push(
             `${t("updateTeamMute")} ${
               team.chatBannedMode ===
-              V2NIMConst.V2NIMTeamChatBannedMode
-                .V2NIM_TEAM_CHAT_BANNED_MODE_NONE
+              V2NIMConst.V2NIMTeamChatBannedMode.V2NIM_TEAM_CHAT_BANNED_MODE_NONE
                 ? t("closeText")
                 : t("openText")
             }`
+          );
+        }
+        if (team.joinMode !== undefined) {
+          content.push(
+            team.joinMode === V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_APPLY
+              ? t("updateTeamJoinModeOpen")
+              : t("updateTeamJoinModeClose")
+          );
+        }
+        if (team.agreeMode !== undefined) {
+          content.push(
+            team.agreeMode === V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_AUTH
+              ? t("updateTeamAgreeModeOpen")
+              : t("updateTeamAgreeModeClose")
           );
         }
         if (team.serverExtension) {
@@ -113,8 +124,7 @@ const notificationContentWatch = autorun(() => {
             })} ${content.join("、")}`
           : "";
       }
-      case V2NIMConst.V2NIMMessageNotificationType
-        .V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_APPLY_PASS:
+      case V2NIMConst.V2NIMMessageNotificationType.V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_APPLY_PASS:
       case V2NIMConst.V2NIMMessageNotificationType
         .V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_INVITE_ACCEPT: {
         return `${store?.uiStore.getAppellation({
@@ -122,8 +132,7 @@ const notificationContentWatch = autorun(() => {
           teamId,
         })} ${t("joinTeamText")}`;
       }
-      case V2NIMConst.V2NIMMessageNotificationType
-        .V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_INVITE: {
+      case V2NIMConst.V2NIMMessageNotificationType.V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_INVITE: {
         //@ts-ignore
         const accounts: string[] = attachment?.targetIds || [];
         accounts.map(async (item) => {
@@ -141,8 +150,7 @@ const notificationContentWatch = autorun(() => {
 
         return `${nicks} ${t("joinTeamText")}`;
       }
-      case V2NIMConst.V2NIMMessageNotificationType
-        .V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_KICK: {
+      case V2NIMConst.V2NIMMessageNotificationType.V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_KICK: {
         //@ts-ignore
         const accounts: string[] = attachment?.targetIds || [];
         accounts.map(async (item) => {
@@ -198,8 +206,7 @@ const notificationContentWatch = autorun(() => {
 
         return `${nicks} ${t("beRemoveTeamManagersText")}`;
       }
-      case V2NIMConst.V2NIMMessageNotificationType
-        .V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_LEAVE: {
+      case V2NIMConst.V2NIMMessageNotificationType.V2NIM_MESSAGE_NOTIFICATION_TYPE_TEAM_LEAVE: {
         return `${store?.uiStore.getAppellation({
           account: props.msg.senderId as string,
           teamId,

@@ -3,30 +3,25 @@
     :class="`msg-item-wrapper ${
       msg.pinState &&
       !(
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         msg.timeValue !== undefined
       ) &&
       !msg.recallType
         ? 'msg-pin'
         : ''
-    }`"
-    :id="MSG_ID_FLAG + props.msg.messageClientId"
+    } ${isHighlighted ? 'msg-highlighted' : ''}`"
+    :id="MSG_ID_FLAG + msg.messageClientId"
   >
     <!-- 通知消息 -->
     <MessageNotification
-      v-if="
-        msg.messageType ===
-        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION
-      "
+      v-if="msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION"
       :msg="msg"
     />
 
     <!-- 撤回消息-可重新编辑 -->
     <div
       v-else-if="
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         msg.recallType === 'reCallMsg' &&
         msg.canEdit &&
         msg.isSelf
@@ -48,8 +43,7 @@
     <!-- 撤回消息-不可重新编辑 本端撤回-->
     <div
       v-else-if="
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         msg.recallType === 'beReCallMsg' &&
         !msg.canEdit &&
         msg.isSelf
@@ -61,8 +55,7 @@
     <!-- 撤回消息-不可重新编辑 本端撤回 超时-->
     <div
       v-else-if="
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         msg.recallType === 'reCallMsg' &&
         !msg.canEdit &&
         msg.isSelf
@@ -74,8 +67,7 @@
     <!-- 撤回消息 对端撤回 -->
     <div
       v-else-if="
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         msg.recallType === 'beReCallMsg' &&
         !msg.isSelf
       "
@@ -85,34 +77,40 @@
       </div>
     </div>
     <!-- 常规消息 -->
-    <div
-      v-else
-      class="msg-common"
-      :style="{ flexDirection: !msg.isSelf ? 'row' : 'row-reverse' }"
-    >
-      <MessageAvatar :account="msg.senderId" :to="to" />
+    <div v-else class="msg-common-container" :class="{ 'is-multi-select': isMultiSelectMode }">
+      <div v-if="isMultiSelectMode" class="msg-checkbox-wrapper" @click.stop="toggleSelection">
+        <input
+          type="checkbox"
+          :checked="isSelected"
+          class="msg-checkbox-input"
+          @click.stop="toggleSelection"
+        />
+      </div>
       <div
-        class="msg-content"
-        :style="{ alignItems: !msg.isSelf ? 'flex-start' : 'flex-end' }"
+        class="msg-common"
+        :style="{
+          flexDirection: !msg.isSelf ? 'row' : 'row-reverse',
+          flex: 1,
+        }"
       >
-        <div
-          class="msg-name"
-          :class="{
-            'msg-name-left': !msg.isSelf,
-            'msg-name-right': msg.isSelf,
-          }"
-        >
-          {{ appellation }}
-        </div>
-        <MessageBubble :msg="msg" :bg-visible="true">
-          <MessageItemContent :msg="msg" :replyMsg="replyMsg" />
-        </MessageBubble>
-        <!-- 消息时间 -->
-        <div
-          class="msg-timestamp"
-          :class="{ 'msg-timestamp-self': msg.isSelf }"
-        >
-          {{ formatMessageTime?.(msg.createTime || 0) }}
+        <MessageAvatar :account="msg.senderId" :to="to" />
+        <div class="msg-content" :style="{ alignItems: !msg.isSelf ? 'flex-start' : 'flex-end' }">
+          <div
+            class="msg-name"
+            :class="{
+              'msg-name-left': !msg.isSelf,
+              'msg-name-right': msg.isSelf,
+            }"
+          >
+            {{ appellation }}
+          </div>
+          <MessageBubble :msg="msg" :bg-visible="true">
+            <MessageItemContent :msg="msg" :replyMsg="replyMsg" />
+          </MessageBubble>
+          <!-- 消息时间 -->
+          <div class="msg-timestamp" :class="{ 'msg-timestamp-self': msg.isSelf }">
+            {{ formatMessageTime?.(msg.createTime || 0) }}
+          </div>
         </div>
       </div>
     </div>
@@ -121,7 +119,7 @@
 
 <script lang="ts" setup>
 /** 消息项 */
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted } from "vue";
 
 import MessageAvatar from "./message-avatar.vue";
 import MessageBubble from "./message-bubble.vue";
@@ -149,12 +147,30 @@ const props = withDefaults(
 
 const { store, nim } = getContextState();
 
+const isMultiSelectMode = ref(false);
+const isSelected = ref(false);
+
+const multiSelectStateWatch = autorun(() => {
+  isMultiSelectMode.value = store?.uiStore.isMultiSelectMode || false;
+  if (props.msg.messageClientId) {
+    isSelected.value =
+      store?.uiStore.selectedMessageIds.includes(props.msg.messageClientId as string) || false;
+  }
+});
+
+const toggleSelection = () => {
+  if (props.msg.messageClientId) {
+    if (isSelected.value) {
+      store?.uiStore.unselectMessage(props.msg.messageClientId);
+    } else {
+      store?.uiStore.selectMessage(props.msg.messageClientId);
+    }
+  }
+};
+
 // 回复消息
 const replyMsg = computed(() => {
-  return (
-    props.replyMsgsMap &&
-    props.replyMsgsMap[props.msg.messageClientId as string]
-  );
+  return props.replyMsgsMap && props.replyMsgsMap[props.msg.messageClientId as string];
 }) as V2NIMMessageForUI;
 
 // 昵称
@@ -165,9 +181,7 @@ const conversationType = nim?.conversationIdUtil?.parseConversationType(
   props.msg.conversationId as string
 ) as unknown as V2NIMConversationType;
 // 会话对象
-const to = nim?.conversationIdUtil?.parseConversationTargetId(
-  props.msg.conversationId as string
-);
+const to = nim?.conversationIdUtil?.parseConversationTargetId(props.msg.conversationId as string);
 
 // 重新编辑消息
 const handleReeditMsg = (msg: V2NIMMessageForUI) => {
@@ -179,11 +193,7 @@ const formatMessageTime = (timestamp: number) => {
   const date = new Date(Number(timestamp));
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const messageDate = new Date(
-    date.getFullYear(),
-    date.getMonth(),
-    date.getDate()
-  );
+  const messageDate = new Date(date.getFullYear(), date.getMonth(), date.getDate());
 
   if (messageDate.getTime() === today.getTime()) {
     // 今天的消息，只显示时分秒
@@ -212,6 +222,45 @@ const formatMessageTime = (timestamp: number) => {
   }
 };
 
+// 消息高亮状态 - 在UI层管理
+const isHighlighted = ref(false);
+let highlightTimer: NodeJS.Timeout | null = null;
+
+// 高亮消息的方法
+const highlightMessage = (duration: number = 800) => {
+  // 清除之前的定时器
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+  }
+
+  // 设置高亮状态
+  isHighlighted.value = true;
+
+  // 设置定时器清除高亮
+  highlightTimer = setTimeout(() => {
+    isHighlighted.value = false;
+    highlightTimer = null;
+  }, duration);
+};
+
+// 清除高亮状态
+const clearHighlight = () => {
+  isHighlighted.value = false;
+  if (highlightTimer) {
+    clearTimeout(highlightTimer);
+    highlightTimer = null;
+  }
+};
+
+// 监听高亮事件
+const handleHighlightMessage = (data: any) => {
+  const eventData = data as { messageId: string; duration: number };
+  if (props.msg.messageClientId === eventData.messageId) {
+    console.log("开始高亮消息:", props.msg.messageClientId);
+    highlightMessage(eventData.duration);
+  }
+};
+
 // 监听昵称变化
 const uninstallAppellationWatch = autorun(() => {
   // 昵称展示顺序 群昵称 > 备注 > 个人昵称 > 帐号
@@ -219,21 +268,49 @@ const uninstallAppellationWatch = autorun(() => {
   appellation.value = store?.uiStore?.getAppellation({
     account: props.msg.senderId as string,
     teamId:
-      conversationType ===
-      V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
-        ? to
-        : "",
+      conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM ? to : "",
   }) as string;
 });
 
+onMounted(() => {
+  // 监听高亮消息事件
+  emitter.on("highlightMessage", handleHighlightMessage);
+});
+
 onUnmounted(() => {
+  // 清理事件监听器和定时器
+  emitter.off("highlightMessage", handleHighlightMessage);
+  clearHighlight();
   uninstallAppellationWatch();
+  multiSelectStateWatch();
 });
 </script>
 
 <style scoped>
 .msg-item-wrapper {
   padding: 0 10px 10px 10px;
+}
+
+.msg-common-container {
+  display: flex;
+  align-items: flex-start;
+  width: 100%;
+}
+
+.msg-checkbox-wrapper {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  margin-right: 10px;
+  cursor: pointer;
+  padding-top: 12px;
+}
+
+.msg-checkbox-input {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
 }
 
 .msg-common {
@@ -365,5 +442,13 @@ onUnmounted(() => {
   align-self: flex-end;
   padding-left: 0;
   padding-right: 10px;
+}
+
+/* 消息高亮效果 */
+.msg-highlighted {
+  background-color: rgba(255, 215, 0, 0.3) !important;
+  border: 2px solid rgba(255, 215, 0, 0.5) !important;
+  border-radius: 8px !important;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.4) !important;
 }
 </style>

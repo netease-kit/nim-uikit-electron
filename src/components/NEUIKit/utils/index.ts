@@ -1,3 +1,6 @@
+//@ts-expect-error
+import BMF from "./modules/browser-md5-file.js";
+
 /**
  * 秒转换为时分秒
  */
@@ -404,9 +407,7 @@ export const isDiscussionFunc = (serverExtension: string | undefined) => {
  * @param file 图片文件
  * @returns Promise<{ width: number; height: number }>
  */
-export const getImageDimensions = (
-  file: File
-): Promise<{ width: number; height: number }> => {
+export const getImageDimensions = (file: File): Promise<{ width: number; height: number }> => {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
@@ -460,6 +461,7 @@ export const getVideoMetadata = (
 };
 
 export const getOS = (): "macOS" | "Windows" | "Linux" | "Unknown" => {
+  //@ts-ignore
   const p = typeof process !== "undefined" ? (process as any).platform : undefined;
   if (p === "darwin") return "macOS";
   if (p === "win32") return "Windows";
@@ -469,4 +471,33 @@ export const getOS = (): "macOS" | "Windows" | "Linux" | "Unknown" => {
   if (ua.includes("win")) return "Windows";
   if (ua.includes("linux")) return "Linux";
   return "Unknown";
+};
+
+/**
+ * 获取文件 md5
+ */
+export const getFileMd5 = async (file: File): Promise<string> => {
+  return new Promise((res, rej) => {
+    const bmf = new BMF();
+
+    try {
+      bmf.md5(file, (err: unknown, md5: string) => {
+        if (err === "aborted") {
+          rej("md5 calculate aborted");
+        } else if (err) {
+          /**
+           * 其它原因中断
+           */
+          rej(`md5 calculate error: ${err}`);
+        } else {
+          res(md5);
+        }
+      });
+    } catch (err: unknown) {
+      /**
+       * 如果 file 传入空对象。则会进入到这里的 catch 流程。
+       */
+      rej("md5 calculate error: file is empty");
+    }
+  });
 };

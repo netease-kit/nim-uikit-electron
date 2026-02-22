@@ -73,9 +73,11 @@ const LIMIT = 20;
 // 获取收藏列表
 const getCollectionList = async (options: V2NIMCollectionOption) => {
   try {
-    const data = await nim?.messageService?.getCollectionListExByOption(
+    const data = (await nim?.messageService?.getCollectionListExByOption(
       options
-    );
+    )) as {
+      collectionList: V2NIMCollection[];
+    };
 
     const newData = [...list.value, ...data.collectionList];
 

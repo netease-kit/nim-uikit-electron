@@ -3,7 +3,12 @@
     <Transition name="modal" appear>
       <div class="modal" v-if="visible" :style="modalStyle">
         <Transition name="mask" appear>
-          <div class="mask" :style="maskStyle" @click="handleMaskClick" v-if="visible && showMask"></div>
+          <div
+            class="mask"
+            :style="maskStyle"
+            @click="handleMaskClick"
+            v-if="visible && showMask"
+          ></div>
         </Transition>
         <Transition name="modal-content" appear>
           <div class="content" :style="contentStyle" v-if="visible">
@@ -12,9 +17,7 @@
               <slot name="header">
                 <div class="title">{{ title }}</div>
               </slot>
-              <div class="close-btn" v-if="showClose" @click="handleClose">
-                ×
-              </div>
+              <div class="close-btn" v-if="showClose" @click="handleClose">×</div>
             </div>
 
             <!-- 独立的关闭按钮（当没有header时显示） -->
@@ -119,33 +122,25 @@ const contentStyle = computed((): CSSProperties => {
   const style: CSSProperties = {};
 
   if (props.width) {
-    style.width =
-      typeof props.width === "number" ? `${props.width}px` : props.width;
+    style.width = typeof props.width === "number" ? `${props.width}px` : props.width;
   }
 
   if (props.height) {
-    style.height =
-      typeof props.height === "number" ? `${props.height}px` : props.height;
+    style.height = typeof props.height === "number" ? `${props.height}px` : props.height;
   }
 
   if (props.maxWidth) {
-    style.maxWidth =
-      typeof props.maxWidth === "number"
-        ? `${props.maxWidth}px`
-        : props.maxWidth;
+    style.maxWidth = typeof props.maxWidth === "number" ? `${props.maxWidth}px` : props.maxWidth;
   }
 
   if (props.maxHeight) {
     style.maxHeight =
-      typeof props.maxHeight === "number"
-        ? `${props.maxHeight}px`
-        : props.maxHeight;
+      typeof props.maxHeight === "number" ? `${props.maxHeight}px` : props.maxHeight;
   }
 
   // 新增：处理顶部位置
   if (props.top !== undefined) {
-    style.marginTop =
-      typeof props.top === "number" ? `${props.top}px` : props.top;
+    style.marginTop = typeof props.top === "number" ? `${props.top}px` : props.top;
     style.alignSelf = "flex-start";
   }
 
@@ -357,6 +352,7 @@ const handleClose = () => {
   transition: all 0.2s;
   border: 1px solid #d9d9d9;
   background: #fff;
+  user-select: none;
 }
 
 .button:hover {

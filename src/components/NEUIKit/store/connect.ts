@@ -106,7 +106,7 @@ export class ConnectStore {
     }
   }
 
-  private _onDisconnected(e: V2NIMError) {
+  private _onDisconnected(e: V2NIMError | null) {
     this.logger?.log("_onDisconnected", e);
   }
 

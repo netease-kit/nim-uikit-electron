@@ -5,83 +5,61 @@
 </template>
 
 <script lang="ts">
-import { initIMUIKit } from "./components/NEUIKit/utils/init";
-import { setLanguage } from "./components/NEUIKit/utils/i18n";
-import { STORAGE_KEY } from "./components/NEUIKit/utils/constants";
+import { initIMUIKit, releaseIMUIKit } from "./components/NEUIKit/utils/init";
 import { showToast } from "./components/NEUIKit/utils/toast";
+import AboutModal from "./components/NEUIKit/CommonComponents/AboutModal.vue";
+import storageManager from "./components/NEUIKit/utils/storage";
+
 export default {
   name: "App",
-  components: {},
+  components: {
+    AboutModal,
+  },
   data() {
     return {
       showUiKit: false,
+      showAboutModal: false,
     };
   },
 
   methods: {
     async init(opts: { appkey: string; account: string; token: string }) {
-      // 设置语言
-      setLanguage(
-        localStorage.getItem("switchToEnglishFlag") == "en" ? "en" : "zh"
-      );
-
-      // 初始化IMUIKit
-      const { nim } = initIMUIKit(opts.appkey);
+      const { nim } = await initIMUIKit(opts.appkey);
 
       nim?.loginService
         ?.login(opts.account, opts.token, {})
         .then(() => {
-          // IM 登录成功后跳转到会话页面
-          // this.$router.push("/chat");
+          this.$router.push("/chat");
           this.showUiKit = true;
         })
-        .catch((error) => {
+        .catch(async (error) => {
           if (error.code === 102422) {
-            // 账号被封禁
             showToast({
               message: "当前账号已被封禁",
               type: "info",
             });
-            // 登录信息无效，清除并跳转到登录页
-            localStorage.removeItem(STORAGE_KEY);
-            this.$router.push("/login");
           }
+          await storageManager.clearLoginInfo();
+          this.$router.push("/login");
         });
     },
-    checkLoginStatus() {
-      // 获取登录信息
-      const loginInfo = localStorage.getItem(STORAGE_KEY);
-      // 未登录，跳转到登录页
-      if (!loginInfo) {
-        // this.$router.push("/login");
-        this.showUiKit = true;
-        return;
-        // 已登录，跳转到会话页面
-      } else {
-        try {
-          const { account, token } = JSON.parse(loginInfo);
-          // 重新初始化 IMUIKit
-          this.init({
-            appkey: "",
-            account,
-            token,
-          });
-        } catch (error) {
-          console.error("解析登录信息失败", error);
-          // 登录信息无效，清除并跳转到登录页
-          localStorage.removeItem(STORAGE_KEY);
-          // this.$router.push("/login");
-        }
-      }
-    },
   },
-  mounted() {
-    // 检查登录状态
+  async mounted() {
     this.init({
-      appkey: "", // 请填写你的appkey
-      account: "", // 请填写你的account
-      token: "", // 请填写你的token
+      appkey: "", //您在云信控制台注册的appkey
+      account: "", //云信控制台上的account
+      token: "",
     });
+  },
+  beforeUnmount() {
+    // 移除事件监听器
+    window.removeEventListener("beforeunload", () => {
+      releaseIMUIKit();
+    });
+
+    if (window.electronAPI) {
+      window.electronAPI.navigation.removeNavigateToAboutListener();
+    }
   },
 };
 </script>

@@ -15,7 +15,7 @@ import { ContactType, Relation, LocalOptions } from "./types";
 import * as storeUtils from "./utils";
 import * as storeConstants from "./constant";
 import { V2NIMClient } from "node-nim";
-import { V2NIMConst } from "../utils/constants";
+import { NESDK_VERSION, NEUIKIT_VERSION, V2NIMConst } from "../utils/constants";
 
 import sdkPkg from "node-nim/package.json";
 import { logDebug, EventTracking } from "@xkit-yx/utils";
@@ -32,13 +32,9 @@ class RootStore {
     addFriendNeedVerify: true,
     teamJoinMode: V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_FREE,
     teamAgreeMode: V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
-    teamInviteMode:
-      V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_MANAGER,
-    teamUpdateTeamMode:
-      V2NIMConst.V2NIMTeamUpdateInfoMode.V2NIM_TEAM_UPDATE_INFO_MODE_MANAGER,
-    teamUpdateExtMode:
-      V2NIMConst.V2NIMTeamUpdateExtensionMode
-        .V2NIM_TEAM_UPDATE_EXTENSION_MODE_ALL,
+    teamInviteMode: V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_MANAGER,
+    teamUpdateTeamMode: V2NIMConst.V2NIMTeamUpdateInfoMode.V2NIM_TEAM_UPDATE_INFO_MODE_MANAGER,
+    teamUpdateExtMode: V2NIMConst.V2NIMTeamUpdateExtensionMode.V2NIM_TEAM_UPDATE_EXTENSION_MODE_ALL,
     enableTeam: true,
     enableChangeTeamJoinMode: true,
     enableChangeTeamAgreeMode: true,
@@ -58,6 +54,8 @@ class RootStore {
     debug: "debug",
     aiStream: true,
     iconfontUrl: [],
+    enableDesktopNotification: true,
+    enableCloudSearch: true,
   };
   sdkOptions: any = {};
   connectStore: ConnectStore;
@@ -76,14 +74,40 @@ class RootStore {
   logger: typeof storeUtils.logger | null = null;
   storageStore: StorageStore;
 
-  constructor(
-    nim: V2NIMClient,
-    localOptions?: Partial<LocalOptions>,
-    platform = "Electron"
-  ) {
+  constructor(nim: V2NIMClient, localOptions?: Partial<LocalOptions>, platform = "Electron") {
     makeAutoObservable(this);
     this.nim = nim;
-    this.localOptions = { ...this.localOptions, ...localOptions };
+    this.localOptions = {
+      addFriendNeedVerify: true,
+      teamJoinMode: V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_FREE,
+      teamAgreeMode: V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
+      teamInviteMode: V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_MANAGER,
+      teamUpdateTeamMode: V2NIMConst.V2NIMTeamUpdateInfoMode.V2NIM_TEAM_UPDATE_INFO_MODE_MANAGER,
+      teamUpdateExtMode:
+        V2NIMConst.V2NIMTeamUpdateExtensionMode.V2NIM_TEAM_UPDATE_EXTENSION_MODE_ALL,
+      enableTeam: true,
+      enableChangeTeamJoinMode: true,
+      enableChangeTeamAgreeMode: true,
+      leaveOnTransfer: false,
+      needMention: true,
+      p2pMsgReceiptVisible: false,
+      teamMsgReceiptVisible: false,
+      loginStateVisible: false,
+      allowTransferTeamOwner: false,
+      teamManagerVisible: false,
+      aiVisible: true,
+      teamManagerLimit: 10,
+      sendMsgBefore: async (options: any) => options,
+      aiUserAgentProvider: {},
+      conversationLimit: 100,
+      enableCloudConversation: false,
+      debug: "debug",
+      aiStream: true,
+      iconfontUrl: [],
+      enableDesktopNotification: true,
+      enableCloudSearch: true, // 默认启用云端搜索
+      ...localOptions,
+    } as Required<LocalOptions>;
     this.logger =
       this.localOptions?.debug == "off"
         ? null
@@ -93,9 +117,13 @@ class RootStore {
             appName: packageJson.name,
             needStringify: false,
           });
-    this.logger?.log("IMUIKit Version 10.0.0", {
-      localOptions: this.localOptions,
-    });
+
+    this.logger?.log(
+      `Electron IMUIKit Vue3 初始化，NEUIKIT 版本：${NEUIKIT_VERSION}，NIM SDK 版本：${NESDK_VERSION}, localOptions 配置`,
+      {
+        localOptions: this.localOptions,
+      }
+    );
 
     this.connectStore = new ConnectStore(this, nim, this.localOptions);
     this.friendStore = new FriendStore(this, nim);
@@ -117,12 +145,7 @@ class RootStore {
     this.storageStore = new StorageStore(this, nim);
     this.subscriptionStore = new SubscriptionStore(this, nim);
 
-    const reportComponents = [
-      "ContactKit",
-      "ConversationKit",
-      "ChatKit",
-      "SearchKit",
-    ];
+    const reportComponents = ["ContactKit", "ConversationKit", "ChatKit", "SearchKit"];
 
     reportComponents.forEach((item) => {
       const eventTracking = new EventTracking({

@@ -9,12 +9,16 @@ export class SubscriptionStore {
   public stateMap = new Map<string, V2NIMUserStatus>();
   logger: typeof storeUtils.logger | null = null;
 
-  constructor(private rootStore: RootStore, private nim: V2NIMClient) {
+  constructor(
+    private rootStore: RootStore,
+    private nim: V2NIMClient,
+  ) {
     makeAutoObservable(this);
     this._onUserStatusChanged = this._onUserStatusChanged.bind(this);
 
     this.nim.subscriptionService?.on(
       "userStatusChanged",
+      //@ts-ignore todo
       this._onUserStatusChanged
     );
 
@@ -33,6 +37,7 @@ export class SubscriptionStore {
     this.resetState();
     this.nim.subscriptionService?.off(
       "userStatusChanged",
+      //@ts-ignore
       this._onUserStatusChanged
     );
   }
@@ -54,37 +59,40 @@ export class SubscriptionStore {
    * 订阅用户状态，包括在线状态或用户自定义的状态。
    * 成功订阅用户状态后，当订阅的用户状态有变更时，会触发 onUserStatusChanged 回调。
    * @param accountIds 要订阅的用户 ID 列表。
+   * @returns 失败账号列表或 undefined（全部成功）
    */
   async subscribeUserStatusActive(
-    accountIds: string[]
+    accountIds: string[],
   ): Promise<Array<string> | undefined> {
     try {
       this.logger?.log("subscribeUserStatusActive", accountIds);
       const failedAccounts =
         await this.nim.subscriptionService?.subscribeUserStatus({
           accountIds,
-          duration: 3600 * 24 * 7,
-          immediateSync: true,
+          duration: 3600 * 24 * 7, // 7天订阅时长
+          immediateSync: true, // 立即同步状态
         });
 
       if (failedAccounts?.length && failedAccounts.length > 0) {
         this.logger?.warn(
           "subscribeUserStatusActive failed accounts",
-          failedAccounts
+          failedAccounts,
         );
         return failedAccounts;
       }
 
       this.logger?.log("subscribeUserStatusActive success");
+      return undefined; // 全部成功
     } catch (err) {
       this.logger?.error("subscribeUserStatusActive err", err);
+      return accountIds; // 发生异常时返回所有账号作为失败列表
     }
   }
 
   /**
    * 注册用户状态订阅相关监听。
    */
-  private _onUserStatusChanged(userStatusList: Array<V2NIMUserStatus>) {
+  private _onUserStatusChanged(userStatusList: V2NIMUserStatus[]) {
     this.logger?.log("_onUserStatusChanged", userStatusList);
     for (const userStatus of userStatusList) {
       this.stateMap.set(userStatus.accountId, userStatus);

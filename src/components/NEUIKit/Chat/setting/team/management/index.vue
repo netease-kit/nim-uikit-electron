@@ -63,6 +63,36 @@
           @change="setTeamChatBanned"
         />
       </div>
+
+      <div class="team-set-item team-set-item-flex">
+        <div class="team-set-item-label-container">
+          <div class="team-set-item-label">{{ t("teamAgreeModeText") }}</div>
+          <div class="team-set-item-desc">{{ t("teamAgreeModeExplainText") }}</div>
+        </div>
+        <Switch
+          :checked="
+            team?.agreeMode ===
+            V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_AUTH
+          "
+          :disabled="!(isTeamOwner || isTeamManager)"
+          @change="setTeamAgreeMode"
+        />
+      </div>
+
+      <div class="team-set-item team-set-item-flex">
+        <div class="team-set-item-label-container">
+          <div class="team-set-item-label">{{ t("teamJoinModeText") }}</div>
+          <div class="team-set-item-desc">{{ t("teamJoinModeExplainText") }}</div>
+        </div>
+        <Switch
+          :checked="
+            team?.joinMode ===
+            V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_APPLY
+          "
+          :disabled="!(isTeamOwner || isTeamManager)"
+          @change="setTeamJoinMode"
+        />
+      </div>
     </div>
     <!-- 添加管理员弹窗 -->
     <AddTeamManagerModal
@@ -215,6 +245,54 @@ const setTeamChatBanned = async (value: boolean) => {
   }
 };
 
+// 设置入群邀请需同意
+const setTeamAgreeMode = async (value: boolean) => {
+  const checked = value;
+  try {
+    await store?.teamStore.updateTeamActive({
+      teamId: props.teamId,
+      info: {
+        agreeMode: checked
+          ? V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_AUTH
+          : V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
+      },
+    });
+    showToast({
+      message: t("updateTeamSuccessText"),
+      type: "success",
+    });
+  } catch (error: any) {
+    showToast({
+      message: t("updateTeamFailedText"),
+      type: "error",
+    });
+  }
+};
+
+// 设置入群审核
+const setTeamJoinMode = async (value: boolean) => {
+  const checked = value;
+  try {
+    await store?.teamStore.updateTeamActive({
+      teamId: props.teamId,
+      info: {
+        joinMode: checked
+          ? V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_APPLY
+          : V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_FREE,
+      },
+    });
+    showToast({
+      message: t("updateTeamSuccessText"),
+      type: "success",
+    });
+  } catch (error: any) {
+    showToast({
+      message: t("updateTeamFailedText"),
+      type: "error",
+    });
+  }
+};
+
 const onUpdateTeamMode = (e: any) => {
   onUpdateTeamInfo("updateInfoMode", e.detail.value);
 };
@@ -357,11 +435,20 @@ const refreshTeamMembers = async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 0 5px 5px;
 }
 
 .more-icon {
   margin: 0 5px;
+}
+
+.team-set-item-label-container {
+  display: flex;
+  flex-direction: column;
+}
+
+.team-set-item-desc {
+  font-size: 12px;
+  color: #999;
 }
 
 .team-manager-title {

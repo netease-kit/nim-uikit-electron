@@ -3,27 +3,19 @@ import RootStore from "../store";
 import { V2NIMClient } from "node-nim";
 import type { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 
-// 是否开启云端会话，实际根据您的业务调整
-const enableCloudConversation =
-  localStorage.getItem("enableCloudConversation") === "on";
-
-const teamManagerVisible = localStorage.getItem("teamManagerVisible") !== "off";
-
 let nim: V2NIMClient | null = null;
 let uikitStore: RootStore | null = null;
+
 export let imAppkey: string = "";
 
-export const initIMUIKit = (appkey: string) => {
+export const initIMUIKit = async (appkey: string) => {
   nim = new V2NIMClient();
   imAppkey = appkey;
   nim.init({
     appkey,
-    needReconnect: true,
-    debugLevel: "debug",
-    apiVersion: "v2",
     basicOption: {
       // 是否开启云端会话
-      enableCloudConversation: enableCloudConversation,
+      enableCloudConversation: false,
       // 收到撤回消息时是否减少会话未读数
       reduceUnreadOnMessageRecall: true,
     },
@@ -43,11 +35,17 @@ export const initIMUIKit = (appkey: string) => {
       teamAgreeMode:
         V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
       // 是否展示群管理员
-      teamManagerVisible,
+      teamManagerVisible: true,
+      // 是否启用云端搜索
+      enableCloudSearch: false,
+      // 是否显示用户在线状态，默认 false
+      loginStateVisible: true,
       // 发送消息前回调, 可对消息体进行修改，添加自定义参数
       aiVisible: false,
       // 是否开启云端会话
-      enableCloudConversation,
+      enableCloudConversation: false,
+      // 是否开启桌面消息通知
+      enableDesktopNotification: true,
       //@ts-ignore
       sendMsgBefore: async (options: {
         msg: V2NIMMessage;
@@ -57,8 +55,9 @@ export const initIMUIKit = (appkey: string) => {
         return { ...options };
       },
     },
-    "Electron"
+    "Electron",
   );
+
   return {
     nim,
     store: uikitStore,

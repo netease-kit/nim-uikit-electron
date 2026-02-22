@@ -1,28 +1,94 @@
 <template>
-  <a class="msg-file-wrapper" :href="downloadHref" :download="downloadName">
-    <div
-      :class="!msg.isSelf ? 'msg-file msg-file-in' : 'msg-file msg-file-out'"
+  <!-- 文件消息卡片 -->
+  <div
+    class="msg-file-wrapper"
+    :class="{
+      'is-uploading': isUploading,
+      'msg-file-in': !msg.isSelf,
+      'msg-file-out': msg.isSelf,
+    }"
+  >
+    <!-- 文件信息区域（始终显示） -->
+    <a
+      class="msg-file-link"
+      :href="isUploading ? undefined : downloadHref"
+      :download="isUploading ? undefined : downloadName"
+      :class="{ disabled: isUploading }"
     >
-      <Icon :type="iconType" :size="32"></Icon>
-      <div class="msg-file-content">
-        <div class="msg-file-title">
-          <div class="msg-file-title-prefix">{{ baseName }}</div>
-          <div class="msg-file-title-suffix">{{ dotExt }}</div>
+      <div class="msg-file">
+        <Icon :type="iconType" :size="32"></Icon>
+        <div class="msg-file-content">
+          <div class="msg-file-title">
+            <div class="msg-file-title-prefix">{{ baseName }}</div>
+            <div class="msg-file-title-suffix">{{ dotExt }}</div>
+          </div>
+          <div class="msg-file-info">
+            <span class="msg-file-size">{{ parseFileSize(size) }}</span>
+            <!-- 上传时显示状态信息 -->
+            <template v-if="isUploading">
+              <span class="msg-file-status">{{ t("uploadingText") }}</span>
+              <span class="msg-file-speed">{{ formattedSpeed }}</span>
+            </template>
+          </div>
         </div>
-        <div class="msg-file-size">{{ parseFileSize(size) }}</div>
       </div>
+    </a>
+    <!-- 上传时显示取消按钮 -->
+    <div v-if="isUploading" class="msg-file-cancel" @click="handleCancel">
+      <Icon type="icon-guanbi" :size="14" color="#999"></Icon>
     </div>
-  </a>
+    <!-- 底部进度条 -->
+    <UploadProgressBar v-if="isUploading" :progress="uploadProgress" :parentPadding="12" />
+  </div>
 </template>
 
 <script lang="ts" setup>
 /** 文件消息 */
 import { getFileType, parseFileSize } from "@xkit-yx/utils";
 import Icon from "../../CommonComponents/Icon.vue";
+import UploadProgressBar from "../../CommonComponents/UploadProgressBar.vue";
 import type { V2NIMMessageForUI } from "../../store/types";
 import type { V2NIMMessageFileAttachment } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { computed } from "vue";
+import { V2NIMConst } from "../../utils/constants";
+import { t } from "../../utils/i18n";
+import { getContextState } from "../../utils/init";
+
+const { store } = getContextState();
+
 const props = withDefaults(defineProps<{ msg: V2NIMMessageForUI }>(), {});
+
+// 判断是否正在上传
+const isUploading = computed(() => {
+  const progress = props.msg.uploadProgress;
+  const isSending =
+    props.msg.sendingState ===
+    V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING;
+  // 只有进度小于 100% 且正在发送中才显示上传进度组件
+  return typeof progress === "number" && progress >= 0 && progress < 100 && isSending;
+});
+
+// 上传进度
+const uploadProgress = computed(() => props.msg.uploadProgress ?? 0);
+
+// 格式化上传速度
+const formattedSpeed = computed(() => {
+  const speed = props.msg.uploadSpeed;
+  if (!speed || speed <= 0) {
+    return "";
+  }
+  return `${parseFileSize(speed)}/s`;
+});
+
+// 取消上传
+const handleCancel = async () => {
+  try {
+    await store?.msgStore.cancelMessageAttachmentUploadActive(props.msg);
+  } catch (error) {
+    console.error("Cancel upload failed:", error);
+  }
+};
+
 // 文件类型图标映射
 const fileIconMap = {
   pdf: "icon-PPT",
@@ -43,9 +109,7 @@ const {
 } = (props.msg.attachment as V2NIMMessageFileAttachment) || {};
 
 // 文件名后缀
-const dotExt = computed(() =>
-  ext ? (ext.startsWith(".") ? ext : `.${ext}`) : ""
-);
+const dotExt = computed(() => (ext ? (ext.startsWith(".") ? ext : `.${ext}`) : ""));
 
 // 文件名前缀
 const baseName = computed(() => {
@@ -67,9 +131,7 @@ const addUrlSearch = (url: string, search: string): string => {
 };
 
 // 获取文件类型
-const iconType =
-  fileIconMap[getFileType(ext) as keyof typeof fileIconMap] ||
-  "icon-weizhiwenjian";
+const iconType = fileIconMap[getFileType(ext) as keyof typeof fileIconMap] || "icon-weizhiwenjian";
 
 // 下载链接
 const downloadHref = computed(() => {
@@ -80,77 +142,61 @@ const downloadHref = computed(() => {
 });
 
 // 下载文件名
-/**
- * Generates a display name for a file attachment by combining the base filename with its extension
- * @param {V2NIMMessageFileAttachment} props.msg.attachment - The file attachment object containing the base filename
- * @param {string} ext - The file extension to append to the filename
- * @returns {string} The complete filename combining the base name and extension
- */
 const downloadName = computed(() => {
   return (props.msg.attachment as V2NIMMessageFileAttachment)?.name;
 });
-
-// 下载文件
-// const handleDownload = async () => {
-//   try {
-//     const url = downloadHref.value as string;
-//     if (!url) return;
-//     const response = await fetch(url, { mode: "cors", credentials: "omit" });
-//     if (!response.ok) throw new Error(String(response.status));
-//     const blob = await response.blob();
-//     const link = document.createElement("a");
-//     const objectUrl = window.URL.createObjectURL(blob);
-//     link.href = objectUrl;
-//     link.download = downloadName.value || "file";
-//     document.body.appendChild(link);
-//     link.click();
-//     document.body.removeChild(link);
-//     window.URL.revokeObjectURL(objectUrl);
-//   } catch {
-//     const url = downloadHref.value as string;
-//     if (url) {
-//       const link = document.createElement("a");
-//       link.href = url;
-//       link.download = downloadName.value || "file";
-//       document.body.appendChild(link);
-//       link.click();
-//       document.body.removeChild(link);
-//     }
-//   }
-// };
 </script>
 
-<style scoped>
+<style scoped lang="scss">
 .msg-file-wrapper {
-  height: 56px;
-  display: inline-block;
-  padding: 0px;
-  text-decoration: none;
+  position: relative;
+  display: flex;
+  align-items: center;
+  min-width: 240px;
+  max-width: 360px;
+  padding: 12px;
+  padding-bottom: 12px;
+  overflow: hidden;
 }
 
-/* 文件消息基础样式 */
-.msg-file {
-  height: 56px;
-  display: flex;
-  flex-direction: row;
-  align-items: center;
-  border-radius: 8px;
+.msg-file-wrapper.is-uploading {
+  padding-bottom: 16px;
 }
 
 /* 接收的文件消息 */
 .msg-file-in {
+  border-radius: 0 8px 8px 8px;
+  background-color: #e8eaed;
   margin-left: 8px;
 }
 
 /* 发送的文件消息 */
 .msg-file-out {
-  margin-right: 8px;
+  border-radius: 8px 0 8px 8px;
+  background-color: #d6e5f6;
+}
+
+.msg-file-link {
+  flex: 1;
+  min-width: 0;
+  text-decoration: none;
+
+  &.disabled {
+    pointer-events: none;
+  }
+}
+
+/* 文件消息基础样式 */
+.msg-file {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
 }
 
 /* 文件内容区域 */
 .msg-file-content {
-  margin-left: 15px;
-  max-width: 300px;
+  margin-left: 12px;
+  flex: 1;
   min-width: 0;
 }
 
@@ -168,7 +214,6 @@ const downloadName = computed(() => {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0;
-  flex: 1;
 }
 
 /* 文件名后缀 */
@@ -177,17 +222,45 @@ const downloadName = computed(() => {
   flex-shrink: 0;
 }
 
-/* 文件名 */
-.msg-file-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+/* 文件信息行 */
+.msg-file-info {
+  display: flex;
+  align-items: center;
+  font-size: 12px;
+  color: #999;
+  gap: 8px;
+  margin-top: 4px;
 }
 
 /* 文件大小 */
 .msg-file-size {
-  color: #999;
-  font-size: 13px;
-  margin-top: 4px;
+  flex-shrink: 0;
+}
+
+/* 上传状态 */
+.msg-file-status {
+  color: #1890ff;
+}
+
+/* 上传速度 */
+.msg-file-speed {
+  flex-shrink: 0;
+}
+
+/* 取消上传按钮 */
+.msg-file-cancel {
+  flex-shrink: 0;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  margin-left: 8px;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: rgba(0, 0, 0, 0.05);
+  }
 }
 </style>

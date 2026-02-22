@@ -20,6 +20,7 @@
       @keydown="handleKeydown"
       @compositionstart="handleCompositionStart"
       @compositionend="handleCompositionEnd"
+      @paste="handlePaste"
     ></textarea>
     <span
       class="textarea-clear"
@@ -106,6 +107,7 @@ const emit = defineEmits([
   "clear",
   "confirm",
   "input",
+  "paste",
 ]);
 
 const textareaRef = ref<HTMLTextAreaElement>();
@@ -261,6 +263,11 @@ const handleCompositionStart = () => {
 // 处理组合输入结束（中文输入法输入完成）
 const handleCompositionEnd = () => {
   isComposing.value = false;
+};
+
+// 处理粘贴事件，向上透传给父组件
+const handlePaste = (event: ClipboardEvent) => {
+  emit("paste", event);
 };
 
 // 监听内容变化，调整高度

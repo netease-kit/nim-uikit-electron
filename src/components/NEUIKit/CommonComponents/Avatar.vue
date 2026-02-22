@@ -1,14 +1,11 @@
 <template>
-  <div
-    class="avatar"
-    :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }"
-  >
+  <div class="avatar" :style="{ width: avatarSize + 'px', height: avatarSize + 'px' }">
     <div class="img-mask"></div>
     <img
       :lazy-load="true"
       class="avatar-img"
-      v-if="avatarUrl"
-      :src="avatarUrl"
+      v-if="displayAvatarUrl"
+      :src="displayAvatarUrl"
       mode="aspectFill"
     />
     <div class="avatar-name-wrapper" :style="{ backgroundColor: color }">
@@ -22,9 +19,10 @@
 <script lang="ts" setup>
 import { getAvatarBackgroundColor } from "../utils";
 import { autorun } from "mobx";
-import { ref, computed, onUnmounted } from "vue";
+import { ref, computed, onUnmounted, watch } from "vue";
 import type { V2NIMUser } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { getContextState } from "../utils/init";
+import { getCachedAvatarUrl } from "../utils/avatar-cache";
 
 const props = withDefaults(
   defineProps<{
@@ -51,6 +49,9 @@ const avatarSize = props.size || 42;
 const user = ref<V2NIMUser>();
 const appellation = ref();
 
+/** 本地缓存的头像路径 */
+const localAvatarPath = ref<string | null>(null);
+
 const uninstallUserInfoWatch = autorun(async () => {
   if (props.account) {
     store?.userStore?.getUserActive(props.account).then((data) => {
@@ -66,6 +67,7 @@ const uninstallUserInfoWatch = autorun(async () => {
     .slice(-2);
 });
 
+/** 原始头像 URL（远程） */
 const avatarUrl = computed(() => {
   if (props.account) {
     user.value = store?.userStore?.users?.get(props.account);
@@ -73,9 +75,39 @@ const avatarUrl = computed(() => {
   return props.avatar || user.value?.avatar;
 });
 
+/** 实际显示的头像 URL（优先使用本地缓存） */
+const displayAvatarUrl = computed(() => {
+  return localAvatarPath.value || null;
+});
+
 const color = computed(() => {
   return getAvatarBackgroundColor(props.account);
 });
+
+/**
+ * 监听原始头像 URL 变化，触发缓存获取
+ */
+watch(
+  avatarUrl,
+  async (newUrl) => {
+    if (!newUrl) {
+      localAvatarPath.value = null;
+      return;
+    }
+
+    try {
+      const cachedUrl = await getCachedAvatarUrl(newUrl);
+      // 确保 URL 没有在获取过程中改变
+      if (avatarUrl.value === newUrl) {
+        localAvatarPath.value = cachedUrl;
+      }
+    } catch {
+      // 缓存获取失败，保持显示占位符
+      localAvatarPath.value = null;
+    }
+  },
+  { immediate: true }
+);
 
 onUnmounted(() => {
   uninstallUserInfoWatch();

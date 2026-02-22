@@ -26,14 +26,7 @@
 
 <script lang="ts" setup>
 /** 消息列表 */
-import {
-  ref,
-  onBeforeMount,
-  onUnmounted,
-  nextTick,
-  onMounted,
-  watch,
-} from "vue";
+import { ref, onBeforeMount, onUnmounted, nextTick, onMounted, watch } from "vue";
 import MessageItem from "./message-item.vue";
 import emitter from "../../utils/eventBus";
 
@@ -70,6 +63,7 @@ onBeforeMount(() => {
 });
 
 const scrollTop = ref(0);
+const loadingMoreMessages = ref(false);
 
 // 消息滑动到底部
 const scrollToBottom = () => {
@@ -86,6 +80,7 @@ let scrollTimer: NodeJS.Timeout | number | null = null;
 // 处理滚动事件，实现向上滚动加载更多和检测滚动到底部
 const handleScroll = () => {
   if (!messageListRef.value) {
+    console.log("handleScroll: messageListRef.value 为空");
     return;
   }
 
@@ -102,19 +97,50 @@ const handleScroll = () => {
     const clientHeight = messageListRef.value.clientHeight;
     const distanceFromBottom = scrollHeight - scrollTop - clientHeight;
 
-    // 精确检测是否在底部（避免近底部时强制滚动导致抖动）
-    if (distanceFromBottom === 0) {
-      emitter.emit(events.ON_SCROLL_BOTTOM);
+    // 添加调试日志
+    console.log("滚动事件触发:", {
+      scrollTop,
+      scrollHeight,
+      clientHeight,
+      distanceFromBottom,
+      loadingMoreMessages: loadingMoreMessages.value,
+      msgsLength: props.msgs.length,
+      isJumpedToMessage: store?.uiStore.isJumpedToMessage,
+    });
+
+    // 如果滚动到顶部附近且不在加载中，则加载更多历史消息
+    if (scrollTop <= 50 && !loadingMoreMessages.value && props.msgs.length > 0) {
+      console.log("滚动到顶部，准备加载历史消息");
+      loadMoreMessages();
     }
 
-    // 向上滚动加载更多的逻辑
-    if (!props.loadingMore && !props.noMore) {
-      const threshold = 100; // 距离顶部100px时触发加载
-      if (scrollTop <= threshold) {
-        loadMoreMessages();
+    // 如果滚动到底部附近且不在加载中，则加载更多新消息（仅在跳转状态下）
+    if (distanceFromBottom <= 50 && !loadingMoreMessages.value && props.msgs.length > 0) {
+      const lastMsg = props.msgs[props.msgs.length - 1];
+      const isJumpedState = store?.uiStore.isJumpedToMessage;
+      console.log("检查跳转状态:", {
+        isJumpedState,
+        distanceFromBottom,
+        loadingMoreMessages: loadingMoreMessages.value,
+        hasMessages: props.msgs.length > 0,
+        hasLastMsg: !!lastMsg,
+      });
+      if (lastMsg && isJumpedState) {
+        // 仅在跳转状态下才发送 GET_NEXT_MSG 事件
+        console.log("在跳转状态下，发送 GET_NEXT_MSG 事件，加载新消息");
+        loadingMoreMessages.value = true;
+        emitter.emit(events.GET_NEXT_MSG, lastMsg);
+      } else if (lastMsg && !isJumpedState) {
+        console.log("不在跳转状态，不加载新消息");
       }
     }
-  }, 150); // 150ms防抖延迟
+
+    // 精确检测是否在底部（用于隐藏新消息提醒）
+    if (distanceFromBottom === 0) {
+      console.log("精确底部检测触发，隐藏新消息提醒");
+      emitter.emit(events.ON_SCROLL_BOTTOM);
+    }
+  }, 100); // 防抖延迟100ms
 };
 
 // 加载更多消息
@@ -129,8 +155,7 @@ const loadMoreMessages = () => {
   const msg = props.msgs.filter(
     (item) =>
       !(
-        item.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+        item.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
         ["beReCallMsg", "reCallMsg"].includes(item.recallType || "")
       )
   )[0];
@@ -202,13 +227,34 @@ defineExpose({
   messageListRef,
 });
 
+// 重置加载状态
+const resetLoadingMoreMessages = () => {
+  console.log("🔄 收到 RESET_LOADING_MORE_MESSAGES 事件，重置 loadingMoreMessages 为 false");
+  loadingMoreMessages.value = false;
+};
+
 onMounted(() => {
   // 监听滚动到底部
   emitter.on(events.ON_SCROLL_BOTTOM, scrollToBottom);
+
+  // 监听加载完成事件 - 修复事件名称
+  emitter.on(events.RESET_LOADING_MORE_MESSAGES, resetLoadingMoreMessages);
+
   // 添加滚动监听器，实现向上滚动加载更多
   nextTick(() => {
     if (messageListRef.value) {
+      console.log("添加滚动监听器到:", messageListRef.value);
       messageListRef.value.addEventListener("scroll", handleScroll);
+
+      // 测试初始状态
+      const scrollInfo = {
+        scrollTop: messageListRef.value.scrollTop,
+        scrollHeight: messageListRef.value.scrollHeight,
+        clientHeight: messageListRef.value.clientHeight,
+      };
+      console.log("初始滚动状态:", scrollInfo);
+    } else {
+      console.log("messageListRef.value 为空，无法添加滚动监听器");
     }
   });
 });
@@ -216,6 +262,9 @@ onMounted(() => {
 onUnmounted(() => {
   emitter.off(events.ON_SCROLL_BOTTOM, scrollToBottom);
   emitter.off(events.AUDIO_URL_CHANGE);
+
+  // 清理加载完成事件监听器
+  emitter.off(events.RESET_LOADING_MORE_MESSAGES, resetLoadingMoreMessages);
 
   teamWatch();
 

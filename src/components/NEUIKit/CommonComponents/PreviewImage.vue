@@ -25,6 +25,11 @@
           :style="{ width: displayWidth + 'px', height: displayHeight + 'px' }"
           @click.stop
         />
+        <!-- 加载中状态遮罩 -->
+        <div v-if="isLoading" class="loading-overlay" @click.stop>
+          <div class="loading-spinner"></div>
+          <span class="loading-text">{{ t('loadingSourceImage') }}</span>
+        </div>
         <div class="close-button" @click="handleClose">×</div>
       </div>
       <div class="controls">
@@ -46,6 +51,8 @@
 import Icon from "./Icon.vue";
 import type { V2NIMMessageForUI } from "../store/types";
 import { computed, ref } from "vue";
+import { t } from "../utils/i18n";
+
 const props = withDefaults(
   defineProps<{
     visible: boolean;
@@ -55,6 +62,8 @@ const props = withDefaults(
     originHeight: number;
     originWidth: number;
     onClose: () => void;
+    /** 是否正在加载源文件 */
+    isLoading?: boolean;
   }>(),
   {
     visible: false,
@@ -62,6 +71,7 @@ const props = withDefaults(
     msg: undefined,
     onClose: undefined,
     imageUrl: "",
+    isLoading: false,
   }
 );
 
@@ -216,5 +226,41 @@ const handleDownload = async () => {
   border-radius: 50%;
   z-index: 10000;
   transition: background-color 0.2s;
+}
+
+/* 加载中状态遮罩 */
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.loading-spinner {
+  width: 40px;
+  height: 40px;
+  border: 3px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.loading-text {
+  color: #fff;
+  font-size: 14px;
+  margin-top: 12px;
 }
 </style>

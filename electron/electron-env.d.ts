@@ -22,6 +22,14 @@ declare namespace NodeJS {
 }
 
 // Used in Renderer process, expose in `preload.ts`
-interface Window {
-  ipcRenderer: import('electron').IpcRenderer
+// ElectronAPI 类型从 preload.ts 导出
+import type { ElectronAPI } from './preload';
+
+declare global {
+  interface Window {
+    ipcRenderer: import('electron').IpcRenderer
+    electronAPI: ElectronAPI
+  }
 }
+
+export {}

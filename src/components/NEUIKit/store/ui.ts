@@ -8,11 +8,7 @@ import {
   V2NIMLocalConversationForUI,
 } from "./types";
 import RootStore from ".";
-import {
-  V2NIMTeam,
-  V2NIMFriend,
-  V2NIMUser,
-} from "node-nim/types/v2_def/v2_nim_struct_def";
+import { V2NIMTeam, V2NIMFriend, V2NIMUser } from "node-nim/types/v2_def/v2_nim_struct_def";
 
 import * as storeUtils from "./utils";
 
@@ -26,12 +22,38 @@ export class UiStore {
   selectedConversation = "";
   logger: typeof storeUtils.logger | null = null;
 
+  // 多选模式
+  isMultiSelectMode = false;
+  // 选中的消息ID集合
+  selectedMessageIds: string[] = [];
+
+  // 跳转到消息相关状态
+  isJumpedToMessage = false; // 是否是通过搜索跳转到的消息
+  targetMessageId = ""; // 目标消息ID
+
   constructor(
     private rootStore: RootStore,
     private localOptions: LocalOptions
   ) {
     makeAutoObservable(this);
     this.logger = rootStore.logger;
+  }
+
+  setMultiSelectMode(isMultiSelectMode: boolean): void {
+    this.isMultiSelectMode = isMultiSelectMode;
+    if (!isMultiSelectMode) {
+      this.selectedMessageIds = [];
+    }
+  }
+
+  selectMessage(id: string): void {
+    if (!this.selectedMessageIds.includes(id)) {
+      this.selectedMessageIds.push(id);
+    }
+  }
+
+  unselectMessage(id: string): void {
+    this.selectedMessageIds = this.selectedMessageIds.filter((item) => item !== id);
   }
 
   /**
@@ -83,16 +105,10 @@ export class UiStore {
     if (conversationId) {
       if (this.localOptions?.enableCloudConversation) {
         this.rootStore.conversationStore?.resetConversationAit(conversationId);
-        await this.rootStore.conversationStore?.resetConversation(
-          conversationId
-        );
+        await this.rootStore.conversationStore?.resetConversation(conversationId);
       } else {
-        this.rootStore.localConversationStore?.resetConversationAit(
-          conversationId
-        );
-        await this.rootStore.localConversationStore?.resetConversation(
-          conversationId
-        );
+        this.rootStore.localConversationStore?.resetConversationAit(conversationId);
+        await this.rootStore.localConversationStore?.resetConversation(conversationId);
       }
     }
   }
@@ -181,9 +197,7 @@ export class UiStore {
 
     const friend = this.rootStore.friendStore.friends.get(account);
     const user = this.rootStore.userStore.users.get(account);
-    const teamMember = this.rootStore.teamMemberStore.teamMembers
-      .get(teamId)
-      ?.get(account);
+    const teamMember = this.rootStore.teamMemberStore.teamMembers.get(teamId)?.get(account);
 
     return (
       (!ignoreAlias && friend?.alias) ||
@@ -224,5 +238,27 @@ export class UiStore {
 
   get applyMsgs(): V2NIMFriendAddApplicationForUI[] {
     return [...this.rootStore.sysMsgStore.friendApplyMsg.values()];
+  }
+
+  /**
+   * 设置跳转到消息状态
+   */
+  setJumpedToMessage(jumped: boolean): void {
+    this.isJumpedToMessage = jumped;
+  }
+
+  /**
+   * 设置目标消息ID
+   */
+  setTargetMessageId(messageId: string): void {
+    this.targetMessageId = messageId;
+  }
+
+  /**
+   * 清除跳转消息状态
+   */
+  clearJumpedToMessage(): void {
+    this.isJumpedToMessage = false;
+    this.targetMessageId = "";
   }
 }

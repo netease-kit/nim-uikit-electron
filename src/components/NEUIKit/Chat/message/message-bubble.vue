@@ -1,16 +1,12 @@
 <template>
   <MessageDropdown placement="bottom" trigger="contextmenu">
-    <div
-      class="msg-bubble"
-      :style="{ justifyContent: !msg.isSelf ? 'flex-start' : 'flex-end' }"
-    >
+    <div class="msg-bubble" :style="{ justifyContent: !msg.isSelf ? 'flex-start' : 'flex-end' }">
       <div v-if="props.msg.isSelf" class="msg-status-wrapper">
         <MessageIsRead
           v-if="
             props.msg.isSelf &&
             props.msg.sendingState ===
-              V2NIMConst.V2NIMMessageSendingState
-                .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED &&
+              V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED &&
             props.msg.messageStatus?.errorCode !== 195002
           "
           :msg="msg"
@@ -18,8 +14,7 @@
         <div
           v-else-if="
             props.msg.sendingState ===
-            V2NIMConst.V2NIMMessageSendingState
-              .V2NIM_MESSAGE_SENDING_STATE_SENDING
+            V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
           "
         >
           <Icon
@@ -34,8 +29,7 @@
         v-if="
           isMessageNoError(props.msg.messageStatus?.errorCode) ||
           props.msg.sendingState ===
-            V2NIMConst.V2NIMMessageSendingState
-              .V2NIM_MESSAGE_SENDING_STATE_SENDING
+            V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
         "
       >
         <div
@@ -45,10 +39,9 @@
             msg.isSelf ? 'msg-bg-out' : 'msg-bg-in',
             {
               'msg-bg-no-padding':
-                msg.messageType ===
-                  V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
-                msg.messageType ===
-                  V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO,
+                msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
+                msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO ||
+                msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE,
             },
           ]"
         >
@@ -60,8 +53,7 @@
       <div
         v-else-if="
           props.msg.sendingState ===
-            V2NIMConst.V2NIMMessageSendingState
-              .V2NIM_MESSAGE_SENDING_STATE_FAILED ||
+            V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED ||
           props.msg.messageStatus?.errorCode === 102426 ||
           props.msg.messageStatus?.errorCode === 104404 ||
           props.msg.messageStatus?.errorCode === 195002
@@ -85,10 +77,8 @@
               msg.isSelf ? 'msg-bg-out' : 'msg-bg-in',
               {
                 'msg-bg-no-padding':
-                  msg.messageType ===
-                    V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
-                  msg.messageType ===
-                    V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO,
+                  msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
+                  msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO,
               },
             ]"
           >
@@ -121,6 +111,7 @@ import Icon from "../../CommonComponents/Icon.vue";
 import { events } from "../../utils/constants";
 import { isMessageNoError } from "../../utils/msg";
 import { autorun } from "mobx";
+import { handleJumpStateBeforeSend } from "../../utils/jump-state";
 import type { V2NIMMessageForUI } from "../../store/types";
 import { V2NIMConst } from "../../utils/constants";
 import { msgRecallTime } from "../../utils/constants";
@@ -133,6 +124,7 @@ import MessageDropdown from "./message-dropdown.vue";
 import Popover from "../../CommonComponents/Popover.vue";
 import { getContextState } from "../../utils/init";
 import type { V2NIMMessageSendingState } from "node-nim";
+import { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 const props = withDefaults(
   defineProps<{
     msg: V2NIMMessageForUI;
@@ -181,14 +173,11 @@ const msgActions = computed(() => {
       class: "action-recall",
       key: "action-recall",
       show:
-        props.msg.messageType !==
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
+        props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
         props.msg.isSelf &&
         ![
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_SENDING,
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_FAILED,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED,
         ].includes(props.msg.sendingState as V2NIMMessageSendingState),
 
       iconType: "icon-recall",
@@ -199,13 +188,10 @@ const msgActions = computed(() => {
       key: "action-reply",
       iconType: "icon-reply",
       show:
-        props.msg.messageType !==
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
+        props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
         ![
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_SENDING,
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_FAILED,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED,
         ].includes(props.msg.sendingState as V2NIMMessageSendingState),
     },
     {
@@ -214,15 +200,11 @@ const msgActions = computed(() => {
       key: "action-forward",
       iconType: "icon-forward",
       show:
-        props.msg.messageType !==
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
-        props.msg.messageType !==
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_AUDIO &&
+        props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
+        props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_AUDIO &&
         ![
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_SENDING,
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_FAILED,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING,
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED,
         ].includes(props.msg.sendingState as V2NIMMessageSendingState),
     },
     {
@@ -230,14 +212,19 @@ const msgActions = computed(() => {
       class: "action-collect",
       key: "action-collect",
       show:
-        props.msg.messageType !==
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
+        props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
         props.msg.sendingState !==
-          V2NIMConst.V2NIMMessageSendingState
-            .V2NIM_MESSAGE_SENDING_STATE_SENDING &&
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING &&
         props.msg &&
         isMessageNoError(props.msg.messageStatus?.errorCode),
       iconType: "icon-collection",
+    },
+    {
+      name: t("multiSelectText"),
+      class: "action-multi-select",
+      key: "action-multi-select",
+      show: true,
+      iconType: "icon-duoxuan",
     },
   ];
 });
@@ -259,8 +246,18 @@ const handleActionItemClick = (key: string) => {
     case "action-collect":
       handleCollectMsg();
       break;
+    case "action-multi-select":
+      handleMultiSelectMsg();
+      break;
     default:
       break;
+  }
+};
+
+const handleMultiSelectMsg = () => {
+  store?.uiStore.setMultiSelectMode(true);
+  if (props.msg.messageClientId) {
+    store?.uiStore.selectMessage(props.msg.messageClientId);
   }
 };
 
@@ -288,14 +285,11 @@ const handleCollectMsg = async () => {
       props.msg.conversationId as string
     );
     const isTeamMessage =
-      conversationType ===
-      V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM; // V2NIM_CONVERSATION_TYPE_TEAM
+      conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM; // V2NIM_CONVERSATION_TYPE_TEAM
 
     // 获取teamId（如果是群聊）
     const teamId = isTeamMessage
-      ? nim?.conversationIdUtil?.parseConversationTargetId(
-          props.msg.conversationId as string
-        )
+      ? nim?.conversationIdUtil?.parseConversationTargetId(props.msg.conversationId as string)
       : undefined;
 
     await nim?.messageService?.addCollection({
@@ -307,8 +301,7 @@ const handleCollectMsg = async () => {
           account: props.msg.senderId as string,
           teamId: teamId,
         }),
-        avatar: store?.userStore.users.get(props.msg.senderId as string)
-          ?.avatar,
+        avatar: store?.userStore.users.get(props.msg.senderId as string)?.avatar,
       }),
       uniqueId: props.msg.messageServerId,
     });
@@ -327,17 +320,16 @@ const handleCollectMsg = async () => {
 // 重发消息
 const handleResendMsg = async () => {
   const _msg = props.msg as V2NIMMessageForUI;
-  store?.msgStore?.removeMsg(_msg.conversationId, [
-    _msg.messageClientId as string,
-  ]);
+  store?.msgStore?.removeMsg(_msg.conversationId, [_msg.messageClientId as string]);
+
+  // 处理跳转状态下的重发消息：先清空当前消息，加载最新消息
+  await handleJumpStateBeforeSend(_msg.conversationId, "重发消息");
 
   try {
     if (_msg.threadReply) {
-      const beReplyMsg = await nim?.messageService?.getMessageListByRefers([
-        _msg.threadReply,
-      ]);
+      const beReplyMsg = await nim?.messageService?.getMessageListByRefers([_msg.threadReply]);
       if ((beReplyMsg?.length || 0) > 0) {
-        store?.msgStore.replyMsgActive(beReplyMsg?.[0]);
+        store?.msgStore.replyMsgActive(beReplyMsg?.[0] as V2NIMMessage);
       }
     }
     switch (_msg.messageType) {
@@ -388,8 +380,7 @@ const handleReplyMsg = async () => {
   emitter.emit(events.REPLY_MSG, props.msg);
   // 在群里回复其他人的消息，也是@被回复人
   if (
-    props.msg.conversationType ===
-      V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
+    props.msg.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
     !props.msg.isSelf
   ) {
     emitter.emit(events.AIT_TEAM_MEMBER, {
@@ -425,17 +416,12 @@ const handleRecallMsg = () => {
 // 删除消息
 const handleDeleteMsg = () => {
   store?.msgStore?.deleteMsgActive([props.msg]);
-  store?.msgStore?.removeMsg(props.msg.conversationId, [
-    props.msg?.messageClientId as string,
-  ]);
+  store?.msgStore?.removeMsg(props.msg.conversationId, [props.msg?.messageClientId as string]);
 };
 
 const uninstallFriendsWatch = autorun(() => {
   const _isFriend = store?.uiStore.friends
-    .filter(
-      (item) =>
-        !store.relationStore.blacklist.includes(item.accountId as string)
-    )
+    .filter((item) => !store.relationStore.blacklist.includes(item.accountId as string))
     .map((item) => item.accountId)
     .some((item: any) => item.account === props.msg.receiverId);
   isFriend.value = _isFriend as boolean;
@@ -444,16 +430,11 @@ const uninstallFriendsWatch = autorun(() => {
 onMounted(() => {
   // 当前版本仅支持文本、图片、文件、语音、视频 话单消息，其他消息类型统一为未知消息
   isUnknownMsg.value = !(
-    props.msg.messageType ==
-      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT ||
-    props.msg.messageType ==
-      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
-    props.msg.messageType ==
-      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE ||
-    props.msg.messageType ==
-      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_AUDIO ||
-    props.msg.messageType ==
-      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO ||
+    props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT ||
+    props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
+    props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE ||
+    props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_AUDIO ||
+    props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO ||
     props.msg.messageType == V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL
   );
 });

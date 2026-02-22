@@ -2,7 +2,7 @@ import { EventTracking } from "@xkit-yx/utils";
 import sdkPkg from "node-nim/package.json";
 import { imAppkey } from "./init";
 import { getOS } from "./index";
-
+import { NEUIKIT_VERSION } from "./constants";
 
 //上报埋点，便于线上问题排查, 不建议去除
 export const trackInit = (
@@ -10,7 +10,7 @@ export const trackInit = (
 ): void => {
   const eventTracking = new EventTracking({
     appKey: imAppkey,
-    version: "10.0.0",
+    version: NEUIKIT_VERSION,
     component: component,
     imVersion: sdkPkg.version,
     platform: "Electron",

@@ -1,4 +1,5 @@
 import { t } from "./i18n";
+import sdkpkg from "node-nim/package.json";
 
 /**
  *
@@ -445,8 +446,7 @@ const V2NIMErrorMap = {
   /* 由于群成员过多导致标记已读失败，消息发送失败 / sending message failed for marking message read failed for too many team members */
   V2NIM_ERROR_CODE_TEAM_MARK_READ_FAILED: {
     code: 107302,
-    message:
-      "sending message failed for marking message read failed for too many team members",
+    message: "sending message failed for marking message read failed for too many team members",
   },
   /* 仅允许发送者或管理员撤回消息 / only sender or manager can revoke message */
   V2NIM_ERROR_CODE_SENDER_OR_MANAGER_PERMISSION_ONLY_REVOKE: {
@@ -614,8 +614,7 @@ const V2NIMErrorMap = {
   /* 不允许创建2000+超大群 / extended super team creation failed，use open api to create the team */
   V2NIM_ERROR_CODE_EXTENDED_SUPER_TEAM_CREATE_FAILED: {
     code: 108313,
-    message:
-      "/ extended super team creation failed，use open api to create the team",
+    message: "/ extended super team creation failed，use open api to create the team",
   },
   /* 群消息已读功能未开启 / read receipt for team messages function disabled */
   V2NIM_ERROR_CODE_TEAM_MESSAGE_READ_RECEIPT_DISABLED: {
@@ -1031,11 +1030,14 @@ const V2NIMErrorMap = {
 //   [key in keyof typeof V2NIMErrorMap]: number
 // }
 const keys = Object.keys(V2NIMErrorMap) as (keyof typeof V2NIMErrorMap)[];
-export const V2NIMErrorCode = keys.reduce(function (total, key) {
-  const value = V2NIMErrorMap[key];
-  total[key] = value.code;
-  return total;
-}, {} as { [key in keyof typeof V2NIMErrorMap]: number });
+export const V2NIMErrorCode = keys.reduce(
+  function (total, key) {
+    const value = V2NIMErrorMap[key];
+    total[key] = value.code;
+    return total;
+  },
+  {} as { [key in keyof typeof V2NIMErrorMap]: number }
+);
 
 export const V2NIMErrorDesc = keys.reduce(function (total, key) {
   const value = V2NIMErrorMap[key];
@@ -1043,11 +1045,7 @@ export const V2NIMErrorDesc = keys.reduce(function (total, key) {
   return total;
 }, {} as any);
 
-import {
-  V2NIMDataSyncLevel,
-  V2NIMDataSyncType,
-  V2NIMDataSyncState,
-} from "node-nim";
+import { V2NIMDataSyncLevel, V2NIMDataSyncType, V2NIMDataSyncState } from "node-nim";
 import { V2NIMConversationType, V2NIMLastMessageState } from "node-nim";
 import {
   V2NIMFriendAddMode,
@@ -1091,6 +1089,9 @@ import {
   V2NIMTeamJoinActionStatus,
   // V2NIMTeamNotificationType,
   V2NIMTeamMemberRole,
+  V2NIMSearchKeywordMathType,
+  V2NIMSearchDirection,
+  V2NIMSearchStrategy,
 } from "node-nim";
 
 export { V2NIMAIModelRoleType, V2NIMAIModelType } from "node-nim";
@@ -1139,6 +1140,9 @@ export const V2NIMConst = {
   V2NIMTeamJoinActionStatus,
   // V2NIMTeamNotificationType,
   V2NIMTeamMemberRole,
+  V2NIMSearchKeywordMathType,
+  V2NIMSearchDirection,
+  V2NIMSearchStrategy,
 };
 
 // 自定义的一些事件常量
@@ -1173,6 +1177,8 @@ export const events: { [key: string]: string } = {
   EMOJI_AREA_CHANGE: "emojiAreaChange",
   // 获取历史消息
   GET_HISTORY_MSG: "getHistoryMsg",
+  // 获取更多新消息（向下滚动加载）
+  GET_NEXT_MSG: "getNextMsg",
   // 取消转发消息
   CANCEL_FORWARD_MSG: "cancelForwardMsg",
   // 确认转发消息
@@ -1197,11 +1203,17 @@ export const events: { [key: string]: string } = {
   AUDIO_URL_CHANGE: "audioUrlChange",
   // 关闭新消息提示tip
   CLOSE_NEW_MSG_TIP: "closeNewMsgTip",
+  // 重新加载最新消息（用于从跳转状态返回）
+  RELOAD_LATEST_MESSAGES: "reloadLatestMessages",
   // 头像点击
   AVATAR_CLICK: "avatarClick",
+  // 重置加载更多消息状态
+  RESET_LOADING_MORE_MESSAGES: "resetLoadingMoreMessages",
 };
 
 export const HISTORY_LIMIT = 15;
+
+export const SEARCH_HISTORY_LIMIT = 50;
 
 export const MSG_ID_FLAG = "message-item-";
 
@@ -1234,3 +1246,7 @@ export const g2StatusMap: any = {
 export const msgRecallTime = 2 * 60 * 1000;
 
 export const APP_KEY = "";
+
+export const NEUIKIT_VERSION = "10.1.0-beta";
+
+export const NESDK_VERSION = sdkpkg.version;

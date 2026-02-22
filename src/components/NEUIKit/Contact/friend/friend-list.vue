@@ -15,14 +15,7 @@
           {{ item.title }}
         </div>
         <!-- 好友项 -->
-        <div
-          v-else
-          class="friend-item"
-          @click="handleFriendItemClick(item.data)"
-        >
-          <Avatar :account="item.data.accountId" />
-          <div class="friend-name">{{ item.data.appellation }}</div>
-        </div>
+        <FriendItem v-else :friend="item.data" @click="handleFriendItemClick" />
       </div>
     </RecycleScroller>
 
@@ -47,18 +40,20 @@
 
 <script lang="ts" setup>
 /** 好友列表组件 */
-import Avatar from "../CommonComponents/Avatar.vue";
-import UserCardModal from "../CommonComponents/UserCardModal.vue";
+import FriendItem from "./friend-item.vue";
+import UserCardModal from "../../CommonComponents/UserCardModal.vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import { autorun } from "mobx";
 import { onUnmounted, ref, computed } from "vue";
-import { friendGroupByPy } from "../utils/friend";
-import Empty from "../CommonComponents/Empty.vue";
-
-import { t } from "../utils/i18n";
-import { getContextState } from "../utils/init";
-
+import { friendGroupByPy } from "../../utils/friend";
+import Empty from "../../CommonComponents/Empty.vue";
+import { watch } from "vue";
+import { t } from "../../utils/i18n";
+import { getContextState } from "../../utils/init";
+import { V2NIMConnectStatus } from "node-nim";
 const { store } = getContextState();
+
+const loginStateVisible = store?.localOptions.loginStateVisible;
 
 const emit = defineEmits<{
   afterSendMsgClick: [];
@@ -67,6 +62,9 @@ const emit = defineEmits<{
 const friendGroupList = ref<
   { key: string; data: { accountId: string; appellation: string }[] }[]
 >([]);
+
+/** 好友列表 */
+const friendListWithAccount = ref<string[]>([]);
 
 // 将分组数据扁平化为虚拟列表可用的格式
 const flattenedFriendList = computed(() => {
@@ -125,28 +123,73 @@ function handleUpdateVisible(visible: boolean) {
   }
 }
 
+/** 订阅好友在线离线状态 */
+const subscribeUserStatus = (friends: string[]) => {
+  if (loginStateVisible) {
+    // 将 friends 拆分成多个长度不超过 100 的子数组
+    const chunkSize = 100;
+
+    const length = friends.length;
+
+    for (let i = 0; i < length; i += chunkSize) {
+      const chunk = friends.slice(i, i + chunkSize);
+
+      if (chunk.length > 0) {
+        store?.subscriptionStore.subscribeUserStatusActive(chunk);
+      }
+    }
+  }
+};
+
+/** 连接状态监听 断网重连后重新订阅 */
+const connectWatch = autorun(() => {
+  if (
+    store?.connectStore.connectStatus ===
+    V2NIMConnectStatus.V2NIM_CONNECT_STATUS_CONNECTED
+  ) {
+    subscribeUserStatus(friendListWithAccount.value);
+  }
+});
+
+// 监听数组长度变化
+watch(
+  () => friendGroupList.value.length, // 监听 length 属性
+  () => {
+    subscribeUserStatus(friendListWithAccount.value);
+  },
+);
+
 /** 好友列表监听 */
 const friendListWatch = autorun(() => {
   const data = store?.uiStore.friends
-    .filter((item) => item.accountId && !store?.relationStore.blacklist.includes(item.accountId))
+    .filter(
+      (item) =>
+        item.accountId &&
+        !store?.relationStore.blacklist.includes(item.accountId),
+    )
     .map((item) => ({
       accountId: item.accountId,
       appellation: store?.uiStore.getAppellation({
-        account: item.accountId || '',
+        account: item.accountId || "",
       }),
     }));
 
+  friendListWithAccount.value = data?.map((item) => item.accountId) as string[];
+
   friendGroupList.value = friendGroupByPy(
-    data?.filter((f): f is { accountId: string; appellation: string } => !!f.accountId) || [],
+    data?.filter(
+      (f): f is { accountId: string; appellation: string } => !!f.accountId,
+    ) || [],
     {
       firstKey: "appellation",
     },
-    false
+    false,
   );
 });
 
 onUnmounted(() => {
   friendListWatch();
+  connectWatch();
 });
 </script>
 

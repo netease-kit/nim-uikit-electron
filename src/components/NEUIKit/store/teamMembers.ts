@@ -131,8 +131,8 @@ export class TeamMemberStore {
         queryOption,
         res
       );
-      this.setTeamMembers(teamId, res.memberList);
-      return res;
+      this.setTeamMembers(teamId, res?.memberList as V2NIMTeamMember[]);
+      return res as V2NIMTeamMemberListResult;
     } catch (error) {
       this.logger?.error("getTeamMemberActive failed: ", options, error);
       throw error;

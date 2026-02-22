@@ -17,9 +17,7 @@
       <div class="left-panel">
         <div class="friends-section">
           <div class="section-header">
-            <span class="section-div friend-select-text">{{
-              t("friendText")
-            }}</span>
+            <span class="section-div friend-select-text">{{ t("friendText") }}</span>
           </div>
           <div class="person-select-container">
             <PersonSelect
@@ -40,28 +38,15 @@
         <div class="selected-friends-section">
           <div class="selected-header">
             <span class="selected-count"
-              >{{ t("selectedText") }}: {{ teamMembers.length }}
-              {{ t("personUnit") }}</span
+              >{{ t("selectedText") }}: {{ teamMembers.length }} {{ t("personUnit") }}</span
             >
           </div>
           <div class="selected-friends-container">
             <div class="selected-friends-list">
-              <div
-                v-for="accountId in teamMembers"
-                :key="accountId"
-                class="selected-friend-item"
-              >
-                <Avatar
-                  class="selected-avatar"
-                  size="32"
-                  :account="accountId"
-                />
+              <div v-for="accountId in teamMembers" :key="accountId" class="selected-friend-item">
+                <Avatar class="selected-avatar" size="32" :account="accountId" />
                 <div class="selected-friend-info">
-                  <Appellation
-                    class="selected-friend-name"
-                    :account="accountId"
-                    :fontSize="14"
-                  />
+                  <Appellation class="selected-friend-name" :account="accountId" :fontSize="14" />
                 </div>
               </div>
             </div>
@@ -75,9 +60,7 @@
 <script lang="ts" setup>
 /** 添加群成员弹窗 */
 import Modal from "../../../CommonComponents/Modal.vue";
-import PersonSelect, {
-  type PersonSelectItem,
-} from "../../../CommonComponents/PersonSelect.vue";
+import PersonSelect, { type PersonSelectItem } from "../../../CommonComponents/PersonSelect.vue";
 import Avatar from "../../../CommonComponents/Avatar.vue";
 import Appellation from "../../../CommonComponents/Appellation.vue";
 import { ref, computed, onMounted } from "vue";
@@ -85,6 +68,7 @@ import { t } from "../../../utils/i18n";
 import { toast } from "../../../utils/toast";
 import { debounce } from "@xkit-yx/utils";
 import { getContextState } from "../../../utils/init";
+import { V2NIMConst } from "../../../utils/constants";
 
 // Props
 interface Props {
@@ -149,10 +133,21 @@ const addTeamMember = debounce(() => {
     return;
   }
 
+  // 获取群组信息,检查入群邀请是否需要同意
+  const team = store?.teamStore.teams.get(props.teamId);
+  const agreeMode = team?.agreeMode;
+
   store?.teamMemberStore
     .addTeamMemberActive({ teamId: props.teamId, accounts: teamMembers.value })
     .then(() => {
-      toast.success(t("addTeamMemberSuccessText"));
+      // 根据agreeMode判断显示的提示文案
+      // V2NIM_TEAM_AGREE_MODE_NO_AUTH = 0 不需要验证
+      // V2NIM_TEAM_AGREE_MODE_AUTH = 1 需要验证
+      if (agreeMode === V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_AUTH) {
+        toast.success(t("addTeamMemberWaitingVerifyText"));
+      } else {
+        toast.success(t("addTeamMemberSuccessText"));
+      }
     })
     .catch((err: any) => {
       switch (err ? err.code : "") {
@@ -172,12 +167,10 @@ const addTeamMember = debounce(() => {
 onMounted(() => {
   const list =
     store?.uiStore.friends.filter(
-      (item) =>
-        !store?.relationStore.blacklist.includes(item.accountId as string)
+      (item) => !store?.relationStore.blacklist.includes(item.accountId as string)
     ) || [];
 
-  const currentTeamMembers =
-    store?.teamMemberStore.getTeamMember(props.teamId) || [];
+  const currentTeamMembers = store?.teamMemberStore.getTeamMember(props.teamId) || [];
   const teamMemberIds = currentTeamMembers.map((member) => member.accountId);
 
   friendList.value = list.map((item) => ({

@@ -83,19 +83,10 @@
               :key="conversation.conversationId"
               :class="{ selected: selectedId === conversation.conversationId }"
               @click="
-                () =>
-                  selectItem(
-                    conversation.conversationId,
-                    conversation.type,
-                    conversation
-                  )
+                () => selectItem(conversation.conversationId, conversation.type, conversation)
               "
             >
-              <Avatar
-                :account="conversation.accountId"
-                :avatar="conversation.avatar"
-                size="32"
-              />
+              <Avatar :account="conversation.accountId" :avatar="conversation.avatar" size="32" />
               <div class="item-info">
                 <Appellation
                   class="conversation-item-title"
@@ -178,8 +169,7 @@
                 () =>
                   selectItem(
                     team.teamId,
-                    V2NIMConst.V2NIMConversationType
-                      .V2NIM_CONVERSATION_TYPE_TEAM
+                    V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
                   )
               "
             >
@@ -196,11 +186,7 @@
         <div class="send-to-header">{{ t("sendToText") }}</div>
         <div class="selected-items">
           <div v-if="selectedItem" class="selected-item">
-            <Avatar
-              :account="selectedItem.id"
-              :avatar="selectedItem.avatar"
-              size="32"
-            />
+            <Avatar :account="selectedItem.id" :avatar="selectedItem.avatar" size="32" />
             <span class="selected-name">{{ selectedItem.name }}</span>
           </div>
         </div>
@@ -239,14 +225,19 @@ import Empty from "../../CommonComponents/Empty.vue";
 import { RecycleScroller } from "vue-virtual-scroller";
 import { getContextState } from "../../utils/init";
 import type { V2NIMConversationType } from "node-nim";
-import type {
-  V2NIMMessage,
-  V2NIMTeam,
-} from "node-nim/types/v2_def/v2_nim_struct_def";
-const props = defineProps<{
-  visible: boolean;
-  msg?: V2NIMMessage; // 转发的消息对象
-}>();
+import type { V2NIMMessage, V2NIMTeam } from "node-nim/types/v2_def/v2_nim_struct_def";
+import { handleJumpStateBeforeSend } from "../../utils/jump-state";
+const props = withDefaults(
+  defineProps<{
+    visible: boolean;
+    msg?: V2NIMMessage; // 转发的消息对象
+    isMergeForward?: boolean;
+  }>(),
+  {
+    visible: false,
+    isMergeForward: false,
+  }
+);
 
 const emit = defineEmits<{
   (e: "update:modelValue", value: boolean): void;
@@ -289,9 +280,7 @@ const filteredFriendList = computed(() => {
 const filteredTeamList = computed(() => {
   if (!searchKeyword.value) return teamList.value;
   return teamList.value.filter(
-    (team) =>
-      team.name &&
-      team.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
+    (team) => team.name && team.name.toLowerCase().includes(searchKeyword.value.toLowerCase())
   );
 });
 
@@ -303,22 +292,48 @@ const filteredRecentList = computed(() => {
 });
 
 /**转发消息确认 */
-const handleForwardConfirm = () => {
+const handleForwardConfirm = async () => {
   if (!selectedId.value) {
     return;
   }
+
+  // 处理跳转状态下的转发消息：先清空当前消息，加载最新消息
+  await handleJumpStateBeforeSend(props.msg?.conversationId, "转发消息");
 
   if (!props.msg) {
     toast.info(t("getForwardMessageFailed"));
     return;
   }
 
+  if (props.isMergeForward) {
+    store?.msgStore
+      .sendMessageActive({
+        msg: props.msg as V2NIMMessage,
+        conversationId: forwardConversationId.value,
+      })
+      .then(async () => {
+        if (forwardComment.value && nim) {
+          const textMsg = nim.messageCreator?.createTextMessage(forwardComment.value);
+          if (textMsg) {
+            await store?.msgStore.sendMessageActive({
+              msg: textMsg,
+              conversationId: forwardConversationId.value,
+            });
+          }
+        }
+        toast.success(t("forwardSuccessText"));
+      })
+      .catch(() => {
+        toast.error(t("forwardFailedText"));
+      })
+      .finally(() => {
+        emit("close");
+      });
+    return;
+  }
+
   store?.msgStore
-    .forwardMsgActive(
-      props.msg,
-      forwardConversationId.value,
-      forwardComment.value
-    )
+    .forwardMsgActive(props.msg, forwardConversationId.value, forwardComment.value)
     .then(() => {
       toast.success(t("forwardSuccessText"));
     })
@@ -340,10 +355,7 @@ const handleForwardCancel = () => {
 /** 好友列表监听 */
 const friendListWatch = autorun(() => {
   const data = store?.uiStore.friends
-    .filter(
-      (item) =>
-        !store?.relationStore.blacklist.includes(item.accountId as string)
-    )
+    .filter((item) => !store?.relationStore.blacklist.includes(item.accountId as string))
     .map((item) => ({
       accountId: item.accountId,
       appellation: store?.uiStore.getAppellation({
@@ -376,9 +388,7 @@ const recentConversationListWatch = autorun(() => {
       avatar: item.avatar,
       type: item.type,
       conversationId: item.conversationId,
-      accountId: nim?.conversationIdUtil?.parseConversationTargetId(
-        item.conversationId || ""
-      ),
+      accountId: nim?.conversationIdUtil?.parseConversationTargetId(item.conversationId || ""),
     }));
   }
 });
@@ -440,8 +450,7 @@ const selectItem = (
         id: nim?.conversationIdUtil?.parseConversationTargetId(targetId) || "",
 
         name:
-          conversation.type ===
-          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+          conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
             ? conversation.name
             : store?.uiStore.getAppellation({
                 account: conversation.accountId,

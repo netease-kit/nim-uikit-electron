@@ -33,11 +33,11 @@ export interface V2NIMLocalConversationForUI extends V2NIMLocalConversation {
 }
 
 export interface V2NIMTeamJoinActionInfoForUI extends V2NIMTeamJoinActionInfo {
+  // UI 层添加的群名称字段（异步获取后填充）
+  teamName?: string;
 }
 
-export interface V2NIMFriendAddApplicationForUI
-  extends V2NIMFriendAddApplication {
-}
+export interface V2NIMFriendAddApplicationForUI extends V2NIMFriendAddApplication {}
 
 export interface AIUserAgentProvider {
   /**
@@ -57,10 +57,20 @@ export interface AIUserAgentProvider {
 }
 
 export interface V2NIMMessageForUI extends V2NIMMessage {
-  // 上传进度
+  // 上传进度 0-100
   uploadProgress?: number;
+  // 上传速度（字节/秒）
+  uploadSpeed?: number;
+  // 上传开始时间戳
+  uploadStartTime?: number;
+  // 已上传字节数
+  uploadedBytes?: number;
   // 上传时预览图片
   previewImg?: string;
+  // 上传时预览图片宽度（用于图片/视频消息在上传过程中显示正确的宽高比）
+  previewWidth?: number;
+  // 上传时预览图片高度
+  previewHeight?: number;
   // 能否撤回
   canRecall?: boolean;
   // 撤回定时器
@@ -200,16 +210,19 @@ export interface LocalOptions {
   /**
    * 是否需要流式输出ai 消息
    */
-
   aiStream?: boolean;
+  /**
+   * 是否启用桌面消息通知，默认 true
+   */
+  enableDesktopNotification?: boolean;
+
+  /**
+   * 是否启用云端搜索，默认 true
+   */
+  enableCloudSearch?: boolean;
 }
 
-export type ContactType =
-  | "blackList"
-  | "groupList"
-  | "friendList"
-  | "msgList"
-  | "aiList";
+export type ContactType = "blackList" | "groupList" | "friendList" | "msgList" | "aiList";
 
 export type Relation = "friend" | "stranger" | "myself" | "ai";
 

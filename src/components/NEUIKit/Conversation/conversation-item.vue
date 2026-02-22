@@ -5,8 +5,7 @@
         'conversation-item-container',
         {
           'stick-on-top': conversation.stickTop,
-          'conversation-item-checked':
-            conversation.conversationId === selectedConversation,
+          'conversation-item-checked': conversation.conversationId === selectedConversation,
         },
       ]"
       @click="() => handleConversationItemClick()"
@@ -18,14 +17,21 @@
             <div class="badge" v-else>{{ unread }}</div>
           </div>
           <Avatar size="36" :account="to" :avatar="teamAvatar" />
+          <!-- 用户在线离线状态 -->
+          <div
+            v-if="
+              loginStateVisible &&
+              conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
+            "
+            :class="onlineStatus ? 'login-state-icon' : 'unlogin-state-icon'"
+          ></div>
         </div>
         <div class="conversation-item-right">
           <div class="conversation-item-top">
             <Appellation
               class="conversation-item-title"
               v-if="
-                conversation.type ===
-                V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
+                conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
               "
               :account="to"
               :fontSize="14"
@@ -40,14 +46,8 @@
               <span v-if="beMentioned" class="beMentioned">
                 {{ "[" + t("someoneText") + "@" + t("meText") + "]" }}
               </span>
-              <ConversationItemIsRead
-                v-if="showSessionUnread"
-                :conversation="props.conversation"
-              />
-              <span
-                v-if="props.conversation.lastMessage"
-                class="conversation-item-desc-content"
-              >
+              <ConversationItemIsRead v-if="showSessionUnread" :conversation="props.conversation" />
+              <span v-if="props.conversation.lastMessage" class="conversation-item-desc-content">
                 <LastMsgContent :lastMessage="props.conversation.lastMessage" />
               </span>
             </span>
@@ -84,18 +84,17 @@
 import Avatar from "../CommonComponents/Avatar.vue";
 import Appellation from "../CommonComponents/Appellation.vue";
 import Icon from "../CommonComponents/Icon.vue";
+import { ref, onUnmounted } from "vue";
 import { computed } from "vue";
-import dayjs from "dayjs";
 import { t } from "../utils/i18n";
-import { V2NIMConst } from "../utils/constants";
-import type {
-  V2NIMConversationForUI,
-  V2NIMLocalConversationForUI,
-} from "../store/types";
+import { formatDate } from "../utils/date";
+import { V2NIMConst, V2NIMUserStatusType } from "../utils/constants";
+import type { V2NIMConversationForUI, V2NIMLocalConversationForUI } from "../store/types";
 import ConversationItemIsRead from "./conversation-item-read.vue";
 import LastMsgContent from "./conversation-item-last-msg-content.vue";
 import Dropdown from "../CommonComponents/Dropdown.vue";
 import { getContextState } from "../utils/init";
+import { autorun } from "mobx";
 
 const props = withDefaults(
   defineProps<{
@@ -105,24 +104,24 @@ const props = withDefaults(
   {}
 );
 
-const { nim } = getContextState();
+const { nim, store } = getContextState();
+
+const loginStateVisible = store?.localOptions.loginStateVisible;
 
 const emit = defineEmits(["click", "delete", "stickyToTop", "mute"]);
+/** 当前会话方在线离线状态 */
+const onlineStatus = ref<boolean>(false);
 
 const moreActions = computed(() => {
   return [
     {
-      name: props.conversation.stickTop
-        ? t("deleteStickTopText")
-        : t("addStickTopText"),
+      name: props.conversation.stickTop ? t("deleteStickTopText") : t("addStickTopText"),
       class: "action-top",
       key: "action-top",
       iconType: props.conversation.stickTop ? "icon-cancel-top" : "icon-top",
     },
     {
-      name: props.conversation.mute
-        ? t("unmuteSessionText")
-        : t("muteSessionText"),
+      name: props.conversation.mute ? t("unmuteSessionText") : t("muteSessionText"),
       class: "action-mute",
       key: "action-mute",
       iconType: props.conversation.mute ? "icon-cancel-mute" : "icon-mute",
@@ -149,10 +148,7 @@ const handleActionItemClick = (key: string) => {
 
 // 群头像
 const teamAvatar = computed(() => {
-  if (
-    props.conversation.type ===
-    V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
-  ) {
+  if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM) {
     const { avatar } = props.conversation;
     return avatar;
   }
@@ -175,19 +171,13 @@ const to = computed(() => {
 
 const date = computed(() => {
   const time = Number(
-    props.conversation.lastMessage?.messageRefer?.createTime ||
-      props.conversation.updateTime
+    props.conversation.lastMessage?.messageRefer?.createTime || props.conversation.updateTime
   );
   // 如果最后一条消息时间戳不存在，则会话列表不显示
   if (!time) {
     return "";
   }
-  const _d = dayjs(time);
-  const isCurrentDay = _d.isSame(dayjs(), "day");
-  const isCurrentYear = _d.isSame(dayjs(), "year");
-  return _d.format(
-    isCurrentDay ? "HH:mm" : isCurrentYear ? "MM-DD" : "YYYY-MM"
-  );
+  return formatDate(time);
 });
 
 const max = 99;
@@ -210,20 +200,15 @@ const beMentioned = computed(() => {
 
 const showSessionUnread = computed(() => {
   const myUserAccountId = nim?.loginService?.getLoginUser();
-  if (
-    props.conversation.type ===
-    V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
-  ) {
+  if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
     return (
-      props?.conversation?.lastMessage?.messageRefer?.senderId ===
-        myUserAccountId &&
+      props?.conversation?.lastMessage?.messageRefer?.senderId === myUserAccountId &&
       props?.conversation?.lastMessage?.messageType !==
         V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL &&
       props?.conversation?.lastMessage?.messageType !==
         V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION &&
       props?.conversation?.lastMessage?.sendingState ===
-        V2NIMConst.V2NIMMessageSendingState
-          .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED &&
+        V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED &&
       // @ts-ignore
       props?.conversation?.lastMessage?.lastMessageState !==
         V2NIMConst.V2NIMLastMessageState.V2NIM_MESSAGE_STATE_REVOKED
@@ -233,15 +218,37 @@ const showSessionUnread = computed(() => {
   }
 });
 
+/** 监听会话方在线离线状态 */
+const onlineStatusWatch = autorun(() => {
+  if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
+    const stateMap = store?.subscriptionStore.stateMap;
+    const to =  nim?.conversationIdUtil?.parseConversationTargetId(
+    props.conversation.conversationId || ""
+  ) as string
+
+    if (store?.localOptions?.loginStateVisible) {
+      onlineStatus.value =
+        stateMap?.get(to)?.statusType === V2NIMUserStatusType.V2NIM_USER_STATUS_TYPE_LOGIN;
+    } else {
+      onlineStatus.value = false;
+    }    
+  }
+});
+
 function handleConversationItemClick() {
   emit("click", props.conversation);
 }
+
+onUnmounted(() => {
+  onlineStatusWatch();
+});
 </script>
 
 <style scoped>
 .conversation-item-container:hover {
   background-color: #ebf3fc;
 }
+
 /* 基础容器 */
 .conversation-item-container {
   position: relative;
@@ -323,6 +330,7 @@ function handleConversationItemClick() {
   box-sizing: border-box;
   height: 22px;
 }
+
 .conversation-item-badge {
   position: absolute;
   top: 0;
@@ -445,5 +453,29 @@ function handleConversationItemClick() {
 .action-name {
   margin-left: 5px;
   font-size: 14px;
+}
+
+.login-state-icon {
+  width: 8px;
+  height: 8px;
+  box-sizing: content-box;
+  background-color: #84ed85;
+  border: 2px solid #fff;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
+}
+
+.unlogin-state-icon {
+  width: 8px;
+  height: 8px;
+  box-sizing: content-box;
+  background-color: #d4d9da;
+  border: 2px solid #fff;
+  position: absolute;
+  right: -2px;
+  bottom: -2px;
+  border-radius: 50%;
 }
 </style>

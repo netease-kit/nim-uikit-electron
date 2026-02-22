@@ -5,16 +5,8 @@
     </div>
     <Teleport to="body" v-if="visible">
       <Transition name="settings-menu">
-        <div
-          v-show="visible"
-          class="settings-menu-content"
-          :style="contentStyle"
-          @click.stop
-        >
-          <div
-            class="settings-menu-item language-item"
-            @click="toggleLanguageSubmenu"
-          >
+        <div v-show="visible" class="settings-menu-content" :style="contentStyle" @click.stop>
+          <div class="settings-menu-item language-item" @click="toggleLanguageSubmenu">
             <Icon type="icon-zhongyingwen" :size="16" />
             <span class="menu-text">{{ currentLanguage }}</span>
             <Icon type="icon-jiantou" :size="12" class="arrow-icon" />
@@ -64,12 +56,12 @@ import type { CSSProperties } from "vue";
 import Icon from "../../../components/NEUIKit/CommonComponents/Icon.vue";
 import { showModal } from "../../../components/NEUIKit/utils/modal";
 import { useRouter } from "vue-router";
-import { STORAGE_KEY } from "../../../components/NEUIKit/utils/constants";
 import { t } from "../../../components/NEUIKit/utils/i18n";
 import SettingModal from "./setting-modal.vue";
 import { getContextState } from "../../../components/NEUIKit/utils/init";
 import { showToast } from "../../../components/NEUIKit/utils/toast";
-import { ipcRenderer } from "electron";
+import storageManager from "../../../components/NEUIKit/utils/storage";
+
 const { store, nim } = getContextState();
 
 const router = useRouter();
@@ -79,10 +71,12 @@ const settingsMenuRef = ref<HTMLElement | null>(null);
 const position = ref({ x: 0, y: 0 });
 const settingModalVisible = ref(false);
 
+// 响应式的当前语言状态
+const currentLanguageFlag = ref<string>("zh");
+
 // 动态获取当前语言显示文本
 const currentLanguage = computed(() => {
-  const lang = localStorage.getItem("switchToEnglishFlag");
-  return lang === "en" ? t("enText") : t("zhText");
+  return currentLanguageFlag.value === "en" ? t("enText") : t("zhText");
 });
 
 const contentStyle = computed<CSSProperties>(() => ({
@@ -115,19 +109,35 @@ const hideMenu = () => {
   showLanguageSubmenu.value = false;
 };
 
-const toggleLanguageSubmenu = () => {
-  showLanguageSubmenu.value = !showLanguageSubmenu.value;
+let devClickCount = 0;
+const onDevIconClick = () => {
+  devClickCount += 1;
+  if (devClickCount >= 5) {
+    devClickCount = 0;
+    if (window.electronAPI) {
+      window.electronAPI.app.openDevTools();
+    }
+  }
 };
 
-const switchLanguage = (lang: string) => {
-  localStorage.setItem("switchToEnglishFlag", lang);
+const toggleLanguageSubmenu = () => {
+  showLanguageSubmenu.value = !showLanguageSubmenu.value;
+  onDevIconClick();
+};
+
+const switchLanguage = async (lang: string) => {
+  await storageManager.setItem("switchToEnglishFlag", lang);
+  currentLanguageFlag.value = lang;
+
   // 语言变化处理逻辑
   hideMenu();
   showToast({
     type: "info",
     message: "重启应用生效",
   });
-  ipcRenderer.invoke("app:relaunch");
+  if (window.electronAPI) {
+    window.electronAPI.app.relaunch();
+  }
 };
 
 const openSettings = () => {
@@ -140,15 +150,14 @@ const openSettings = () => {
 
 const logout = () => {
   console.log("Logout");
-  // 使用modal显示确认对话框
   showModal({
     title: t("logoutConfirmText"),
     confirmText: t("confirmText") || "确定",
     cancelText: t("cancelText") || "取消",
     width: 400,
     height: 140,
-    onConfirm: () => {
-      localStorage.removeItem(STORAGE_KEY);
+    onConfirm: async () => {
+      await storageManager.clearLoginInfo();
       store?.destroy();
       nim?.loginService?.logout();
       router.push("/login");
@@ -163,16 +172,17 @@ const logout = () => {
 
 // 点击外部关闭菜单
 const handleClickOutside = (event: MouseEvent) => {
-  if (
-    settingsMenuRef.value &&
-    !settingsMenuRef.value.contains(event.target as Node)
-  ) {
+  if (settingsMenuRef.value && !settingsMenuRef.value.contains(event.target as Node)) {
     hideMenu();
   }
 };
 
-onMounted(() => {
+onMounted(async () => {
   document.addEventListener("click", handleClickOutside);
+
+  // 加载当前语言设置
+  const langSetting = await storageManager.getItemAsync("switchToEnglishFlag");
+  currentLanguageFlag.value = langSetting === "en" ? "en" : "zh";
 });
 
 onUnmounted(() => {
@@ -275,7 +285,9 @@ onUnmounted(() => {
 /* 动画效果 */
 .settings-menu-enter-active,
 .settings-menu-leave-active {
-  transition: opacity 0.2s, transform 0.2s;
+  transition:
+    opacity 0.2s,
+    transform 0.2s;
 }
 
 .settings-menu-enter-from,

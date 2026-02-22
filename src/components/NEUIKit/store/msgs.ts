@@ -1,11 +1,6 @@
 import RootStore from ".";
 import { makeAutoObservable } from "mobx";
-import {
-  AI_MESSAGE_LIMIT,
-  AT_ALL_ACCOUNT,
-  HISTORY_LIMIT,
-  RECALL_TIME,
-} from "./constant";
+import { AI_MESSAGE_LIMIT, AT_ALL_ACCOUNT, HISTORY_LIMIT, RECALL_TIME } from "./constant";
 import {
   LocalOptions,
   V2NIMLocalConversationForUI,
@@ -41,12 +36,16 @@ import {
   V2NIMError,
 } from "node-nim/types/v2_def/v2_nim_struct_def";
 import * as storeUtils from "./utils";
+import { showNotification } from "../utils/electron";
+import { getMsgContentTipByType } from "../utils/msg";
+import { t } from "../utils/i18n";
 import PinMsgsMap, { PinInfo, PinInfos } from "./pinMsgsMap";
 import {
   V2NIMConversationType,
   V2NIMAIModelRoleType,
   V2NIMClient,
   V2NIMMessageType,
+  V2NIMQueryDirection,
 } from "node-nim";
 
 /**Mobx 可观察对象，负责管理会话消息的子 store */
@@ -60,6 +59,8 @@ export class MsgStore {
   pinMsgs = new PinMsgsMap();
   /** 收藏消息 */
   collectionMsgs: Map<string, V2NIMMessage> = new Map();
+
+  /** 搜索历史消息结果 */
   constructor(
     private rootStore: RootStore,
     private nim: V2NIMClient,
@@ -69,43 +70,27 @@ export class MsgStore {
     this.logger = rootStore.logger;
 
     this._onReceiveMessages = this._onReceiveMessages.bind(this);
-    this._onClearHistoryNotifications =
-      this._onClearHistoryNotifications.bind(this);
-    this._onMessageDeletedNotifications =
-      this._onMessageDeletedNotifications.bind(this);
+    this._onClearHistoryNotifications = this._onClearHistoryNotifications.bind(this);
+    this._onMessageDeletedNotifications = this._onMessageDeletedNotifications.bind(this);
     this._onMessagePinNotification = this._onMessagePinNotification.bind(this);
-    this._onMessageQuickCommentNotification =
-      this._onMessageQuickCommentNotification.bind(this);
-    this._onMessageRevokeNotifications =
-      this._onMessageRevokeNotifications.bind(this);
-    this._onReceiveP2PMessageReadReceipts =
-      this._onReceiveP2PMessageReadReceipts.bind(this);
-    this._onReceiveTeamMessageReadReceipts =
-      this._onReceiveTeamMessageReadReceipts.bind(this);
+    this._onMessageQuickCommentNotification = this._onMessageQuickCommentNotification.bind(this);
+    this._onMessageRevokeNotifications = this._onMessageRevokeNotifications.bind(this);
+    this._onReceiveP2PMessageReadReceipts = this._onReceiveP2PMessageReadReceipts.bind(this);
+    this._onReceiveTeamMessageReadReceipts = this._onReceiveTeamMessageReadReceipts.bind(this);
 
-    this._onReceiveMessagesModified =
-      this._onReceiveMessagesModified.bind(this);
+    this._onReceiveMessagesModified = this._onReceiveMessagesModified.bind(this);
 
     this.getTeamMsgReadsActive = batchRequest(this.getTeamMsgReadsActive, 50);
 
     /** 收到消息 */
     nim?.messageService?.on("receiveMessages", this._onReceiveMessages);
     /** 清空会话历史消息通知 */
-    nim?.messageService?.on(
-      "clearHistoryNotifications",
-      this._onClearHistoryNotifications
-    );
+    nim?.messageService?.on("clearHistoryNotifications", this._onClearHistoryNotifications);
     /** 消息被删除通知 */
-    nim?.messageService?.on(
-      "messageDeletedNotifications",
-      this._onMessageDeletedNotifications
-    );
+    nim?.messageService?.on("messageDeletedNotifications", this._onMessageDeletedNotifications);
 
     /** 收到消息 pin 状态更新 */
-    nim?.messageService?.on(
-      "messagePinNotification",
-      this._onMessagePinNotification
-    );
+    nim?.messageService?.on("messagePinNotification", this._onMessagePinNotification);
 
     /** 收到消息快捷评论更新 */
     nim?.messageService?.on(
@@ -114,16 +99,10 @@ export class MsgStore {
     );
 
     /** 收到消息撤回通知 消息 */
-    nim?.messageService?.on(
-      "messageRevokeNotifications",
-      this._onMessageRevokeNotifications
-    );
+    nim?.messageService?.on("messageRevokeNotifications", this._onMessageRevokeNotifications);
 
     /** 收到点对点消息的已读回执 */
-    nim?.messageService?.on(
-      "receiveP2PMessageReadReceipts",
-      this._onReceiveP2PMessageReadReceipts
-    );
+    nim?.messageService?.on("receiveP2PMessageReadReceipts", this._onReceiveP2PMessageReadReceipts);
 
     /** 收到群消息的已读回执 */
     nim?.messageService?.on(
@@ -137,10 +116,7 @@ export class MsgStore {
      * 2. 收到更新消息多端同步通知
      * 3. 收到更新消息漫游通知
      */
-    nim?.messageService?.on(
-      "receiveMessagesModified",
-      this._onReceiveMessagesModified
-    );
+    nim?.messageService?.on("receiveMessagesModified", this._onReceiveMessagesModified);
   }
 
   resetState(): void {
@@ -155,26 +131,17 @@ export class MsgStore {
   destroy(): void {
     this.resetState();
     this.nim?.messageService?.off("receiveMessages", this._onReceiveMessages);
-    this.nim?.messageService?.off(
-      "clearHistoryNotifications",
-      this._onClearHistoryNotifications
-    );
+    this.nim?.messageService?.off("clearHistoryNotifications", this._onClearHistoryNotifications);
     this.nim?.messageService?.off(
       "messageDeletedNotifications",
       this._onMessageDeletedNotifications
     );
-    this.nim?.messageService?.off(
-      "messagePinNotification",
-      this._onMessagePinNotification
-    );
+    this.nim?.messageService?.off("messagePinNotification", this._onMessagePinNotification);
     this.nim?.messageService?.off(
       "messageQuickCommentNotification",
       this._onMessageQuickCommentNotification
     );
-    this.nim?.messageService?.off(
-      "messageRevokeNotifications",
-      this._onMessageRevokeNotifications
-    );
+    this.nim?.messageService?.off("messageRevokeNotifications", this._onMessageRevokeNotifications);
     this.nim?.messageService?.off(
       "receiveP2PMessageReadReceipts",
       this._onReceiveP2PMessageReadReceipts
@@ -228,10 +195,7 @@ export class MsgStore {
     try {
       this.logger?.log("reCallMsgActive", msg);
       // todo
-      await this.nim?.messageService?.revokeMessage(
-        this.handleMsgForSDK(msg),
-        {}
-      );
+      await this.nim?.messageService?.revokeMessage(this.handleMsgForSDK(msg), {});
       this.removeMsg(msg.conversationId, [msg.messageClientId as string]);
       const recallMsg = this._createReCallMsg(msg);
 
@@ -266,11 +230,7 @@ export class MsgStore {
 
       this.logger?.log("deleteMsgActive success", msgs);
     } catch (error) {
-      this.logger?.warn(
-        "deleteMsgActive failed, but delete msgs from memory: ",
-        msgs,
-        error
-      );
+      this.logger?.warn("deleteMsgActive failed, but delete msgs from memory: ", msgs, error);
       throw error;
     }
   }
@@ -294,23 +254,17 @@ export class MsgStore {
       const result = await this.nim?.messageService?.replyMessage(
         message,
         repliedMessage,
-        params,
+        params as V2NIMSendMessageParams,
         () => {}
       );
 
       this.removeReplyMsgActive(conversationId);
-      this._handleSendMsgSuccess(result.message);
-      this.logger?.log(
-        "replyMessageByThreadActive success",
-        { message, repliedMessage },
-        result
-      );
+      if (result?.message) {
+        this._handleSendMsgSuccess(result.message);
+      }
+      this.logger?.log("replyMessageByThreadActive success", { message, repliedMessage }, result);
     } catch (error) {
-      this.logger?.error(
-        "replyMessageByThreadActive fail",
-        message,
-        repliedMessage
-      );
+      this.logger?.error("replyMessageByThreadActive fail", message, repliedMessage);
       message.threadReply = repliedMessage;
       this._handleSendMsgSuccess(message);
 
@@ -337,10 +291,9 @@ export class MsgStore {
     sendBefore?: (msg: V2NIMMessageForUI) => void;
     serverExtension?: Record<string, unknown>;
     previewImg?: string;
-    onAISend?: (
-      msg: V2NIMMessageForUI,
-      aiConfig: V2NIMMessageAIConfigParams
-    ) => void;
+    previewWidth?: number;
+    previewHeight?: number;
+    onAISend?: (msg: V2NIMMessageForUI, aiConfig: V2NIMMessageAIConfigParams) => void;
   }): Promise<V2NIMMessage | void> {
     this.logger?.log("sendMessageActive", params);
     const {
@@ -351,6 +304,8 @@ export class MsgStore {
       sendBefore,
       serverExtension,
       previewImg,
+      previewWidth,
+      previewHeight,
       onAISend,
     } = params;
 
@@ -364,16 +319,14 @@ export class MsgStore {
         serverExtension || JSON.parse(newMsg.serverExtension || "{}")
       );
     } else {
-      finalServerExtension =
-        serverExtension || JSON.parse(newMsg.serverExtension || "{}");
+      finalServerExtension = serverExtension || JSON.parse(newMsg.serverExtension || "{}");
     }
 
     newMsg.serverExtension = Object.keys(finalServerExtension).length
       ? JSON.stringify(finalServerExtension)
       : void 0;
     newMsg.senderId = this.rootStore.userStore.myUserInfo.accountId;
-    newMsg.receiverId =
-      this.nim.conversationIdUtil?.parseConversationTargetId(conversationId);
+    newMsg.receiverId = this.nim.conversationIdUtil?.parseConversationTargetId(conversationId);
     newMsg.conversationId = conversationId;
 
     if (conversationType !== void 0) {
@@ -384,23 +337,30 @@ export class MsgStore {
     const replyMsg = this.getReplyMsgActive(conversationId);
 
     // 在发送中的情况下，让消息先上屏，打上标记，便于UI层渲染，避免回复消息后续高度异常
-    if (
-      replyMsg &&
-      newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
-    ) {
+    if (replyMsg && newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
       //@ts-ignore
       newMsg.threadReply = replyMsg;
     }
 
-    newMsg.sendingState =
-      V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING;
+    newMsg.sendingState = V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING;
 
     if (previewImg) {
       newMsg.previewImg = previewImg;
     }
 
+    if (previewWidth) {
+      newMsg.previewWidth = previewWidth;
+    }
+
+    if (previewHeight) {
+      newMsg.previewHeight = previewHeight;
+    }
+
     if (progress) {
       newMsg.uploadProgress = 0;
+      newMsg.uploadStartTime = Date.now();
+      newMsg.uploadSpeed = 0;
+      newMsg.uploadedBytes = 0;
     }
 
     try {
@@ -433,10 +393,7 @@ export class MsgStore {
         pushConfig:
           sendMsgParams?.pushConfig ||
           (finalServerExtension?.yxAitMsg
-            ? this._formatExtAitToPushInfo(
-                finalServerExtension.yxAitMsg,
-                newMsg.text || ""
-              )
+            ? this._formatExtAitToPushInfo(finalServerExtension.yxAitMsg, newMsg.text || "")
             : void 0),
         messageConfig: {
           // 需要开启已读回执
@@ -447,35 +404,25 @@ export class MsgStore {
         aiConfig: finalAIConfig,
       };
 
-      this.logger?.log(
-        "sendMessageActive finalParams: ",
-        newMsg,
-        conversationId,
-        finalParams
-      );
+      this.logger?.log("sendMessageActive finalParams: ", newMsg, conversationId, finalParams);
 
       // 发送回复消息新模式，使用sdk replyMessage 实现
       if (
         replyMsg &&
         //@ts-ignore
         !this.localOptions?.sendReplyMsgByExt &&
-        newMsg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
+        newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
       ) {
         newMsg.serverExtension = Object.keys(finalServerExtension).length
           ? JSON.stringify(finalServerExtension)
           : void 0;
-        await this.replyMessageByThreadActive(
-          newMsg,
-          replyMsg,
-          conversationId,
-          finalParams
-        );
+        await this.replyMessageByThreadActive(newMsg, replyMsg, conversationId, finalParams);
         sendBefore?.(newMsg);
         return;
       }
 
       // 调用sdk 接口 发送消息
+      // @ts-ignore
       const { message } = await this.nim?.messageService?.sendMessage(
         newMsg,
         conversationId,
@@ -484,15 +431,28 @@ export class MsgStore {
           const shouldContinue = progress?.(percentage);
 
           if (shouldContinue) {
-            const _msg = this.getMsg(conversationId, [
-              newMsg.messageClientId as string,
-            ])[0];
+            const _msg = this.getMsg(conversationId, [newMsg.messageClientId as string])[0];
 
             if (_msg) {
+              // 计算上传速度
+              const now = Date.now();
+              const startTime = _msg.uploadStartTime || now;
+              const elapsedTime = (now - startTime) / 1000; // 秒
+              const fileSize = (newMsg.attachment as { size?: number })?.size || 0;
+              const uploadedBytes = Math.floor((fileSize * percentage) / 100);
+
+              // 计算速度（字节/秒），使用平均速度
+              let uploadSpeed = 0;
+              if (elapsedTime > 0 && uploadedBytes > 0) {
+                uploadSpeed = Math.floor(uploadedBytes / elapsedTime);
+              }
+
               this.addMsg(conversationId, [
                 {
                   ..._msg,
                   uploadProgress: percentage,
+                  uploadSpeed,
+                  uploadedBytes,
                 },
               ]);
             }
@@ -506,10 +466,8 @@ export class MsgStore {
 
       //uploadProgress 为UI层需要的字段，当sendMessage返回时，uploadProgress必为100
       if (
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE ||
-        msg.messageType ===
-          V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE ||
+        msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
         msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO
       ) {
         message.uploadProgress = 100;
@@ -518,20 +476,13 @@ export class MsgStore {
       this._handleSendMsgSuccess(message);
       this.logger?.log("sendMessageActive success", message);
 
-      if (
-        newMsg.messageType ===
-        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
-      ) {
+      if (newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
         this.removeReplyMsgActive(conversationId);
       }
 
       return message;
     } catch (error) {
-      this.logger?.error(
-        "sendMessageActive failed: ",
-        error as V2NIMError,
-        newMsg
-      );
+      this.logger?.error("sendMessageActive failed: ", error as V2NIMError, newMsg);
       // 手动取消上传
       if ((error as V2NIMError).code === 191002) {
         this.removeMsg(conversationId, [newMsg.messageClientId as string]);
@@ -539,10 +490,7 @@ export class MsgStore {
         this._handleSendMsgFail(newMsg, (error as V2NIMError).code as number);
       }
 
-      if (
-        newMsg.messageType ===
-        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
-      ) {
+      if (newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
         this.removeReplyMsgActive(conversationId);
       }
 
@@ -557,17 +505,11 @@ export class MsgStore {
   async cancelMessageAttachmentUploadActive(msg: V2NIMMessage): Promise<void> {
     try {
       this.logger?.log("cancelMessageAttachmentUploadActive", msg);
-      await this.nim?.messageService?.cancelMessageAttachmentUpload(
-        this.handleMsgForSDK(msg)
-      );
+      await this.nim?.messageService?.cancelMessageAttachmentUpload(this.handleMsgForSDK(msg));
       this.removeMsg(msg.conversationId, [msg.messageClientId as string]);
       this.logger?.log("cancelMessageAttachmentUploadActive success", msg);
     } catch (error) {
-      this.logger?.error(
-        "cancelMessageAttachmentUploadActive failed: ",
-        msg,
-        error
-      );
+      this.logger?.error("cancelMessageAttachmentUploadActive failed: ", msg, error);
       throw error;
     }
   }
@@ -579,16 +521,10 @@ export class MsgStore {
   async sendMsgReceiptActive(msg: V2NIMMessage): Promise<void> {
     try {
       this.logger?.log("sendMsgReceiptActive", msg);
-      await this.nim?.messageService?.sendP2PMessageReceipt(
-        this.handleMsgForSDK(msg)
-      );
+      await this.nim?.messageService?.sendP2PMessageReceipt(this.handleMsgForSDK(msg));
       this.logger?.log("sendMsgReceiptActive success", msg);
     } catch (error) {
-      this.logger?.error(
-        "sendMsgReceiptActive failed: ",
-        msg,
-        error as V2NIMError
-      );
+      this.logger?.error("sendMsgReceiptActive failed: ", msg, error as V2NIMError);
       throw error;
     }
   }
@@ -603,11 +539,7 @@ export class MsgStore {
       await this.nim?.messageService?.addCollection(params);
       this.logger?.log("addCollectionActive success", params);
     } catch (error) {
-      this.logger?.error(
-        "addCollectionActive failed: ",
-        params,
-        error as V2NIMError
-      );
+      this.logger?.error("addCollectionActive failed: ", params, error as V2NIMError);
       throw error;
     }
   }
@@ -622,11 +554,7 @@ export class MsgStore {
       await this.nim?.messageService?.removeCollections(collections);
       this.logger?.log("removeCollectionsActive success", collections);
     } catch (error) {
-      this.logger?.error(
-        "removeCollectionsActive failed: ",
-        collections,
-        error as V2NIMError
-      );
+      this.logger?.error("removeCollectionsActive failed: ", collections, error as V2NIMError);
       throw error;
     }
   }
@@ -649,22 +577,16 @@ export class MsgStore {
       res.forEach((item) => {
         const collectionData = JSON.parse(item.collectionData as string);
         // 反序列化
-        const msg = this.nim?.messageConverter?.messageDeserialization(
-          collectionData.message
-        );
+        const msg = this.nim?.messageConverter?.messageDeserialization(collectionData.message);
 
         if (msg) {
-          this.collectionMsgs.set(msg.messageClientId, msg);
+          this.collectionMsgs.set(msg.messageClientId as string, msg);
         }
       });
 
       this.logger?.log("getCollectionListByOptionActive success", option);
     } catch (error) {
-      this.logger?.error(
-        "getCollectionListByOptionActive failed: ",
-        option,
-        error as V2NIMError
-      );
+      this.logger?.error("getCollectionListByOptionActive failed: ", option, error as V2NIMError);
       throw error;
     }
 
@@ -688,11 +610,7 @@ export class MsgStore {
 
       this.logger?.log("sendTeamMsgReceiptActive success", msgs);
     } catch (error) {
-      this.logger?.error(
-        "sendTeamMsgReceiptActive failed: ",
-        msgs,
-        error as V2NIMError
-      );
+      this.logger?.error("sendTeamMsgReceiptActive failed: ", msgs, error as V2NIMError);
       throw error;
     }
   }
@@ -707,11 +625,7 @@ export class MsgStore {
     memberAccountIds?: string[]
   ): Promise<V2NIMTeamMessageReadReceiptDetail> {
     try {
-      this.logger?.log(
-        "getTeamMessageReceiptDetailsActive",
-        message,
-        memberAccountIds
-      );
+      this.logger?.log("getTeamMessageReceiptDetailsActive", message, memberAccountIds);
       const res = await this.nim?.messageService?.getTeamMessageReceiptDetail(
         message,
         memberAccountIds as string[]
@@ -723,7 +637,7 @@ export class MsgStore {
         memberAccountIds,
         res
       );
-      return res;
+      return res as V2NIMTeamMessageReadReceiptDetail;
     } catch (error) {
       this.logger?.error(
         "getTeamMessageReceiptDetailsActive failed: ",
@@ -751,8 +665,7 @@ export class MsgStore {
     try {
       this.logger?.log("getHistoryMsgActive", options);
       const { conversationId, endTime, lastMsgId, limit = 100 } = options;
-      const conversationType =
-        this.nim.conversationIdUtil?.parseConversationType(conversationId);
+      const conversationType = this.nim.conversationIdUtil?.parseConversationType(conversationId);
 
       const finalParams: V2NIMMessageListOption = {
         conversationId,
@@ -773,8 +686,7 @@ export class MsgStore {
       this.addMsg(conversationId, msgs as V2NIMMessage[]);
       // 如果是群组消息，需要获取下自己发出的消息已读未读数
       if (
-        conversationType ===
-          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
+        conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
         this.rootStore.localOptions.teamMsgReceiptVisible
       ) {
         const myMsgs = msgs
@@ -784,30 +696,22 @@ export class MsgStore {
               ![
                 V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION,
                 V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TIP,
-              ].includes(item.messageType)
+              ].includes(item.messageType as V2NIMMessageType)
           );
 
-        await this.getTeamMsgReadsActive(
-          myMsgs as V2NIMMessage[],
-          conversationId
-        );
+        await this.getTeamMsgReadsActive(myMsgs as V2NIMMessage[], conversationId);
       }
 
-      this.logger?.log(
-        "getHistoryMsgActive success",
-        options,
-        finalParams,
-        msgs
-      );
+      this.logger?.log("getHistoryMsgActive success", options, finalParams, msgs);
       return msgs as V2NIMMessage[];
     } catch (error) {
-      this.logger?.error(
-        "getHistoryMsgActive failed: ",
-        options,
-        error as V2NIMError
-      );
+      this.logger?.error("getHistoryMsgActive failed: ", options, error as V2NIMError);
       throw error;
     }
+  }
+
+  /**
+    return all.slice(0, limit);
   }
 
   /**
@@ -856,8 +760,7 @@ export class MsgStore {
         serverExtension,
       });
 
-      const forwardMsg =
-        this.nim.messageCreator?.createForwardMessage(finalMsg);
+      const forwardMsg = this.nim.messageCreator?.createForwardMessage(finalMsg);
 
       if (forwardMsg) {
         await this.sendMessageActive({
@@ -867,17 +770,12 @@ export class MsgStore {
       }
 
       if (comment) {
-        const textMsg = this.nim.messageCreator?.createTextMessage(comment);
+        const textMsg = this.nim.messageCreator?.createTextMessage(comment) as V2NIMMessage;
 
-        await this.sendMessageActive({ msg: textMsg, conversationId });
+        await this.sendMessageActive({ msg: textMsg as V2NIMMessage, conversationId });
       }
 
-      this.logger?.log(
-        "forwardMsgActive success",
-        msg,
-        conversationId,
-        comment
-      );
+      this.logger?.log("forwardMsgActive success", msg, conversationId, comment);
     } catch (error) {
       this.logger?.error("forwardMsgActive failed: ", error);
       throw error;
@@ -889,10 +787,7 @@ export class MsgStore {
    * @param msgs 消息数组
    * @param conversationId 会话id
    */
-  async getTeamMsgReadsActive(
-    msgs: V2NIMMessage[],
-    conversationId: string
-  ): Promise<void> {
+  async getTeamMsgReadsActive(msgs: V2NIMMessage[], conversationId: string): Promise<void> {
     this.logger?.log("getTeamMsgReadsActive", msgs, conversationId);
     let res: V2NIMTeamMessageReadReceipt[] = [];
 
@@ -902,22 +797,16 @@ export class MsgStore {
           msgs.map((item) => this.handleMsgForSDK(item))
         )) as V2NIMTeamMessageReadReceipt[];
       } catch (error) {
-        this.logger?.warn(
-          "getTeamMsgReadsActive failed but continue: ",
-          error as V2NIMError
-        );
+        this.logger?.warn("getTeamMsgReadsActive failed but continue: ", error as V2NIMError);
         // 兼容老用户，忽略这个报错
+        return;
       }
     }
 
     const newMsgs: V2NIMMessageForUI[] = msgs
-      .filter((msg) =>
-        res.some((status) => msg.messageClientId === status.messageClientId)
-      )
+      .filter((msg) => res.some((status) => msg.messageClientId === status.messageClientId))
       .map((item) => {
-        const teamMsgReceipt = res.find(
-          (j) => j.messageClientId === item.messageClientId
-        );
+        const teamMsgReceipt = res.find((j) => j.messageClientId === item.messageClientId);
 
         if (teamMsgReceipt) {
           return this._updateReceiptMsg(item, {
@@ -931,26 +820,18 @@ export class MsgStore {
 
     this.addMsg(conversationId, newMsgs);
   }
+
   /**
    * pin 一条消息
    * @param message 需要被 pin 的消息体
    * @param serverExtension 扩展字段
    */
-  async pinMessageActive(
-    message: V2NIMMessage,
-    serverExtension?: string
-  ): Promise<void> {
+  async pinMessageActive(message: V2NIMMessage, serverExtension?: string): Promise<void> {
     this.logger?.log("pinMessageActive", message, serverExtension);
     try {
-      await this.nim?.messageService?.pinMessage(
-        message,
-        serverExtension as string
-      );
+      await this.nim?.messageService?.pinMessage(message, serverExtension as string);
     } catch (error) {
-      this.logger?.warn(
-        "pinMessageActive failed but continue: ",
-        error as V2NIMError
-      );
+      this.logger?.warn("pinMessageActive failed but continue: ", error as V2NIMError);
       // 这里需要把错误抛出去，让 ui 层感知到
       throw error;
     }
@@ -967,15 +848,9 @@ export class MsgStore {
   ): Promise<void> {
     this.logger?.log("uppinMessageActive", messageRefer, serverExtension);
     try {
-      await this.nim?.messageService?.unpinMessage(
-        messageRefer,
-        serverExtension as string
-      );
+      await this.nim?.messageService?.unpinMessage(messageRefer, serverExtension as string);
     } catch (error) {
-      this.logger?.warn(
-        "uppinMessageActive failed but continue: ",
-        error as V2NIMError
-      );
+      this.logger?.warn("uppinMessageActive failed but continue: ", error as V2NIMError);
       // 这里需要把错误抛出去，让 ui 层感知到
       throw error;
     }
@@ -986,21 +861,12 @@ export class MsgStore {
    * @param messageRefer 需要被取消 pin 的消息摘要
    * @param serverExtension 扩展字段
    */
-  async updatePinMessageActive(
-    message: V2NIMMessage,
-    serverExtension?: string
-  ): Promise<void> {
+  async updatePinMessageActive(message: V2NIMMessage, serverExtension?: string): Promise<void> {
     this.logger?.log("updatePinMessageActive", message, serverExtension);
     try {
-      await this.nim?.messageService?.updatePinMessage(
-        message,
-        serverExtension as string
-      );
+      await this.nim?.messageService?.updatePinMessage(message, serverExtension as string);
     } catch (error) {
-      this.logger?.warn(
-        "updatePinMessageActive failed but continue: ",
-        error as V2NIMError
-      );
+      this.logger?.warn("updatePinMessageActive failed but continue: ", error as V2NIMError);
       // 这里需要把错误抛出去，让 ui 层感知到
       throw error;
     }
@@ -1030,9 +896,7 @@ export class MsgStore {
     // 这里
     pinInfos = pinInfos
       .filter((pinInfo) => pinInfo.pinState > 0 && pinInfo.message)
-      .sort(
-        (a, b) => (b?.message!.createTime || 0) - (a?.message!.createTime || 0)
-      );
+      .sort((a, b) => (b?.message!.createTime || 0) - (a?.message!.createTime || 0));
     return pinInfos;
   }
 
@@ -1049,10 +913,7 @@ export class MsgStore {
     try {
       await this.nim?.messageService?.stopAIStreamMessage(message, params);
     } catch (error) {
-      this.logger?.error(
-        "stopAIStreamMessageActive failed ",
-        error as V2NIMError
-      );
+      this.logger?.error("stopAIStreamMessageActive failed ", error as V2NIMError);
       throw error;
     }
   }
@@ -1098,8 +959,8 @@ export class MsgStore {
     this.logger?.log("voiceToTextActive", message);
     try {
       const text = await this.nim?.messageService?.voiceToText({
-        voiceUrl: message.attachment.url,
-        duration: message.attachment.duration,
+        voiceUrl: message.attachment.url as string,
+        duration: message.attachment.duration as number,
         // todo
         // @ts-ignore
         sceneName: message.attachment.sceneName,
@@ -1110,13 +971,9 @@ export class MsgStore {
 
       if (!text) throw new Error("voiceToText empty");
 
-      this.updateMsg(
-        message.conversationId as string,
-        message.messageClientId as string,
-        {
-          textOfVoice: text,
-        }
-      );
+      this.updateMsg(message.conversationId as string, message.messageClientId as string, {
+        textOfVoice: text,
+      });
       this.logger?.log("voiceToTextActive success", text);
     } catch (error) {
       this.logger?.warn("voiceToTextActive failed: ", error as V2NIMError);
@@ -1150,17 +1007,14 @@ export class MsgStore {
       })
       .forEach((item) => {
         const newMsg = { ...item };
-        const _msg = _msgs.find(
-          (msg) => msg.messageClientId === newMsg.messageClientId
-        );
+        const _msg = _msgs.find((msg) => msg.messageClientId === newMsg.messageClientId);
 
         // SDK 可能会返回多条 messageClientId 相同的数据，此时取 createTime 最新的
         if (_msg) {
           if (
             (_msg?.createTime || 0) <= (newMsg?.createTime || 0) ||
             _msg.sendingState ===
-              V2NIMConst.V2NIMMessageSendingState
-                .V2NIM_MESSAGE_SENDING_STATE_SENDING
+              V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
           ) {
             // 如果之前的消息有撤回相关字段，则更新时保留
             if (_msg.canRecall !== void 0 && _msg.reCallTimer !== void 0) {
@@ -1221,8 +1075,7 @@ export class MsgStore {
           idClients.includes(msg.messageClientId as string) &&
           // 无法删除撤回消息
           !(
-            msg.messageType ===
-              V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+            msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
             msg.recallType === "beReCallMsg"
           );
 
@@ -1236,15 +1089,8 @@ export class MsgStore {
     );
   }
 
-  deletePinInfoByMessageClientId(
-    conversationId: string,
-    messageClientIds: string[]
-  ) {
-    this.logger?.log(
-      "deletePinInfoByMessageClientId",
-      conversationId,
-      messageClientIds
-    );
+  deletePinInfoByMessageClientId(conversationId: string, messageClientIds: string[]) {
+    this.logger?.log("deletePinInfoByMessageClientId", conversationId, messageClientIds);
     this.pinMsgs.delete(conversationId, messageClientIds);
   }
   /**
@@ -1264,16 +1110,10 @@ export class MsgStore {
     }
 
     // 如果有 idClients，只返回 idClients 中的消息，新数组
-    return msgs.filter((item) =>
-      idClients.includes(item.messageClientId as string)
-    );
+    return msgs.filter((item) => idClients.includes(item.messageClientId as string));
   }
 
-  updateMsg(
-    conversationId: string,
-    idClient: string,
-    updateParam: Partial<V2NIMMessageForUI>
-  ) {
+  updateMsg(conversationId: string, idClient: string, updateParam: Partial<V2NIMMessageForUI>) {
     const msgs = this.msgs.get(conversationId);
 
     if (!msgs) return;
@@ -1351,6 +1191,197 @@ export class MsgStore {
     };
   }
 
+  /** 将合并转发消息列表序列化为字符串 */
+  serializeMergeMsgs(
+    msgs: V2NIMMessage[],
+    { appVersion, sdkVersion }: { appVersion: string; sdkVersion: string }
+  ): {
+    content: string;
+    depth: number;
+  } {
+    const header = {
+      version: 1,
+      terminal: "web",
+      sdk_version: sdkVersion,
+      app_version: appVersion,
+      message_count: msgs.length,
+    };
+
+    const msgsWithMergeInfo = msgs.map((msg) => {
+      const user = this.rootStore.userStore.users.get(msg.senderId as string);
+      const nick = this.rootStore.uiStore.getAppellation({
+        account: msg.senderId as string,
+      });
+
+      let serverExt: any = {};
+
+      try {
+        serverExt = JSON.parse(msg.serverExtension || "{}");
+      } catch (error) {
+        serverExt = {};
+      }
+
+      serverExt.mergedMessageAvatarKey = user?.avatar || "";
+      serverExt.mergedMessageNickKey = nick || "";
+
+      return {
+        ...msg,
+        serverExtension: JSON.stringify(serverExt),
+      };
+    });
+
+    const serializedMsgs = msgsWithMergeInfo.map((msg) =>
+      this.nim?.messageConverter?.messageSerialization(msg)
+    );
+
+    const msgListWithHeader = [JSON.stringify(header), ...serializedMsgs];
+
+    const depths = msgs
+      .map((m) => {
+        if (m.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
+          try {
+            const attachment: any = (m as any).attachment;
+            let rawAttachment: any = attachment?.raw;
+
+            if (!rawAttachment && attachment && typeof attachment === "object") {
+              rawAttachment = attachment;
+            }
+
+            let payload: any = undefined;
+
+            if (typeof rawAttachment === "string") {
+              try {
+                payload = JSON.parse(rawAttachment);
+              } catch {
+                payload = undefined;
+              }
+            } else if (rawAttachment && typeof rawAttachment === "object") {
+              payload = rawAttachment;
+            }
+
+            let d = 0;
+
+            if (payload && payload.type === 101) {
+              d = Number(payload?.data?.depth ?? payload?.depth ?? 0);
+            } else {
+              const content: any = (m as any).content;
+
+              if (content) {
+                if (typeof content === "string") {
+                  try {
+                    const c = JSON.parse(content);
+
+                    if (c?.type === 101) {
+                      d = Number(c?.data?.depth ?? c?.depth ?? 0);
+                    }
+                  } catch {
+                    //
+                  }
+                } else if (typeof content === "object" && content.type === 101) {
+                  d = Number(content?.data?.depth ?? content?.depth ?? 0);
+                }
+              }
+
+              try {
+                const textPayload = JSON.parse((m as any).text || "{}");
+
+                if (textPayload?.type === 101) {
+                  d = Number(textPayload?.data?.depth ?? textPayload?.depth ?? 0);
+                }
+              } catch {
+                //
+              }
+            }
+
+            if (!Number.isNaN(d) && d > 0) {
+              return d;
+            }
+          } catch {
+            //
+          }
+        }
+
+        return 0;
+      })
+      .filter((d) => d > 0);
+
+    return {
+      content: msgListWithHeader.join("\n"),
+      depth: depths.length ? Math.max(...depths) + 1 : 1,
+    };
+  }
+
+  /** 将合并转发消息列表反序列化为对象 */
+  deserializeMergeMsgs(mergeMsg: string): V2NIMMessage[] {
+    const lines = (mergeMsg || "").split("\n").filter(Boolean);
+
+    if (!lines.length) return [];
+
+    try {
+      const [, ...serializedMsgs] = lines;
+
+      return serializedMsgs
+        .map((line) => this.nim?.messageConverter?.messageDeserialization(line))
+        .filter(Boolean) as V2NIMMessage[];
+    } catch (error) {
+      this.logger?.warn(
+        "deserializeMergeMsgs failed but continue: ",
+        (error as V2NIMError).toString()
+      );
+
+      return [];
+    }
+  }
+
+  /** 判断消息是否是合并转发消息 */
+  isChatMergedForwardMsg(msg: V2NIMMessageForUI) {
+    if (msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
+      return false;
+    }
+
+    let rawAttachment: any = msg.attachment;
+
+    if (rawAttachment?.raw) {
+      rawAttachment = rawAttachment.raw;
+    }
+
+    if (typeof rawAttachment === "string") {
+      try {
+        rawAttachment = JSON.parse(rawAttachment);
+      } catch (error) {
+        rawAttachment = {};
+      }
+    }
+
+    if (rawAttachment && rawAttachment.type === 101) {
+      return true;
+    }
+
+    // 兼容 content 字段承载的自定义负载
+    let contentPayload: any = (msg as any).content;
+
+    if (typeof contentPayload === "string") {
+      try {
+        contentPayload = JSON.parse(contentPayload);
+      } catch (error) {
+        contentPayload = {};
+      }
+    }
+
+    if (contentPayload && contentPayload.type === 101) {
+      return true;
+    }
+
+    // 兜底：某些场景自定义负载被写入 text
+    try {
+      const textPayload = JSON.parse((msg as any).text || "{}");
+
+      return textPayload?.type === 101;
+    } catch {
+      return false;
+    }
+  }
+
   private async _getMessageListByRefer(
     messageRefers: V2NIMMessageRefer[]
   ): Promise<V2NIMMessage[]> {
@@ -1361,19 +1392,14 @@ export class MsgStore {
         messageRefers
       )) as V2NIMMessage[];
     } catch (error) {
-      this.logger?.warn(
-        "_getMessageListByRefer failed but continue: ",
-        error as V2NIMError
-      );
+      this.logger?.warn("_getMessageListByRefer failed but continue: ", error as V2NIMError);
     }
 
     return res;
   }
 
   /** 从服务器拉 pin 消息列表 */
-  private async _getPinnedMessageListByServer(
-    conversationId: string
-  ): Promise<PinInfos> {
+  private async _getPinnedMessageListByServer(conversationId: string): Promise<PinInfos> {
     this.logger?.log("_getPinnedMessageListByServer", conversationId);
     let res: V2NIMMessagePin[] = [];
     const pinInfos: PinInfos = [];
@@ -1383,10 +1409,7 @@ export class MsgStore {
         conversationId
       )) as V2NIMMessagePin[];
     } catch (error) {
-      this.logger?.warn(
-        "_getPinnedMessageListByServer failed but continue: ",
-        error as V2NIMError
-      );
+      this.logger?.warn("_getPinnedMessageListByServer failed but continue: ", error as V2NIMError);
     }
 
     res.forEach((pin) => {
@@ -1429,8 +1452,7 @@ export class MsgStore {
     if (res.length) {
       pinInfos = pinInfos.map((pinInfo) => {
         const msg = res.find(
-          (item) =>
-            item.messageClientId === pinInfo.messageRefer?.messageClientId
+          (item) => item.messageClientId === pinInfo.messageRefer?.messageClientId
         );
 
         if (msg) {
@@ -1446,25 +1468,22 @@ export class MsgStore {
   }
   private _handleSendMsgSuccess(msg: V2NIMMessage) {
     if (msg && msg.conversationId) {
-      // const canRecallMsg: V2NIMMessageForUI = {
-      //   ...msg,
-      //   canRecall: true,
-      //   reCallTimer: setTimeout(() => {
-      //     // 从内存中取最新的，因为中间可能有其他更新
-      //     const _msg = this.getMsg(msg.conversationId, [msg.messageClientId])[0]
+      // 获取旧消息，保留 previewImg 避免闪烁
+      const oldMsg = this.getMsg(msg.conversationId, [msg.messageClientId as string])[0];
 
-      //     if (_msg) {
-      //       delete _msg.canRecall
-      //       delete _msg.reCallTimer
-      //       this.addMsg(msg.conversationId, [_msg])
-      //     }
-      //   }, RECALL_TIME) as unknown as number,
-      // }
+      // 合并旧消息的 previewImg，确保图片/视频消息在发送成功后平滑过渡
+      const successMsg: V2NIMMessageForUI = {
+        ...msg,
+        // 保留预览图，直到远程 URL 完全可用
+        previewImg: oldMsg?.previewImg,
+        // 清除上传相关的临时状态
+        uploadProgress: undefined,
+        uploadSpeed: undefined,
+        uploadedBytes: undefined,
+        uploadStartTime: undefined,
+      };
 
-      // delete canRecallMsg.uploadProgress
-      // delete canRecallMsg.previewImg
-      // delete canRecallMsg.errorCode
-      this.addMsg(msg.conversationId, [msg]);
+      this.addMsg(msg.conversationId, [successMsg]);
     }
   }
 
@@ -1473,9 +1492,7 @@ export class MsgStore {
     // 因此删除那边做一下 try catch 处理，忽略错误消息
     // 先清除老消息的定时器，再更新消息
     if (msg && msg.conversationId) {
-      const oldMsg = this.getMsg(msg.conversationId, [
-        msg.messageClientId as string,
-      ])[0];
+      const oldMsg = this.getMsg(msg.conversationId, [msg.messageClientId as string])[0];
 
       this._handleClearMsgTimer(oldMsg);
       this.addMsg(msg.conversationId, [
@@ -1486,9 +1503,7 @@ export class MsgStore {
             errorCode,
           },
           uploadProgress: void 0,
-          sendingState:
-            V2NIMConst.V2NIMMessageSendingState
-              .V2NIM_MESSAGE_SENDING_STATE_FAILED,
+          sendingState: V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED,
           errorCode,
         },
       ]);
@@ -1512,6 +1527,9 @@ export class MsgStore {
     } else {
       this.rootStore.localConversationStore?.handleConversationWithAit(data);
     }
+
+    // 处理桌面通知
+    this._handleMessageNotification(data);
   }
 
   private _onReceiveMessagesModified(data: V2NIMMessage[]) {
@@ -1528,9 +1546,7 @@ export class MsgStore {
     });
   }
 
-  private _onMessageDeletedNotifications(
-    data: V2NIMMessageDeletedNotification[]
-  ) {
+  private _onMessageDeletedNotifications(data: V2NIMMessageDeletedNotification[]) {
     this.logger?.log("_onMessageDeletedNotifications: ", data);
     const res: { [key: string]: V2NIMMessageDeletedNotification[] } = {};
 
@@ -1549,24 +1565,14 @@ export class MsgStore {
       );
 
       this.removeMsg(conversationId, messageClientIds as string[]);
-      this.deletePinInfoByMessageClientId(
-        conversationId,
-        messageClientIds as string[]
-      );
+      this.deletePinInfoByMessageClientId(conversationId, messageClientIds as string[]);
     });
   }
 
   private _onMessagePinNotification(data: V2NIMMessagePinNotification) {
-    const {
-      operatorId,
-      messageRefer,
-      serverExtension,
-      createTime,
-      updateTime,
-    } = data.pin as V2NIMMessagePin;
-    const curPinMsgsMap = this.pinMsgs.get(
-      messageRefer?.conversationId as string
-    );
+    const { operatorId, messageRefer, serverExtension, createTime, updateTime } =
+      data.pin as V2NIMMessagePin;
+    const curPinMsgsMap = this.pinMsgs.get(messageRefer?.conversationId as string);
 
     // 如果内存里面没有当前会话的 pin map，直接返回；等主动调用了 getPinnedMessageListActive 内存才会有 pin map，才处理相应的 _onMessagePinNotification
     if (!curPinMsgsMap) return;
@@ -1586,12 +1592,11 @@ export class MsgStore {
     ];
 
     // 补全 message。咨询过产品，nim?.messageService.getMessageListByRefers 这个接口不会有频控的问题，一个人1分钟可以调用几百次。所以这里可以实时补全 message
-    this.completePinnedMessageList(
-      messageRefer?.conversationId as string,
-      newPinInfo
-    ).then((pinInfo) => {
-      this._updateMsgsPinState(messageRefer?.conversationId as string, pinInfo);
-    });
+    this.completePinnedMessageList(messageRefer?.conversationId as string, newPinInfo).then(
+      (pinInfo) => {
+        this._updateMsgsPinState(messageRefer?.conversationId as string, pinInfo);
+      }
+    );
   }
 
   private _updateMsgsPinState(conversationId: string, pinInfos: PinInfos) {
@@ -1628,9 +1633,7 @@ export class MsgStore {
     // 暂不支持
   }
 
-  private async _onMessageRevokeNotifications(
-    data: V2NIMMessageRevokeNotification[]
-  ) {
+  private async _onMessageRevokeNotifications(data: V2NIMMessageRevokeNotification[]) {
     this.logger?.log("_onMessageRevokeNotifications: ", data);
     data.forEach(async (item) => {
       const oldMsg = this.getMsg(item.messageRefer?.conversationId, [
@@ -1646,10 +1649,7 @@ export class MsgStore {
       const messageClientIds = [item.messageRefer?.messageClientId];
 
       this.removeMsg(conversationId, messageClientIds as string[]);
-      this.deletePinInfoByMessageClientId(
-        conversationId as string,
-        messageClientIds as string[]
-      );
+      this.deletePinInfoByMessageClientId(conversationId as string, messageClientIds as string[]);
       if (!item.message?.isSelf) {
         // 处理对方撤回消息的情况
         const msg = this._createBeReCallMsg(item);
@@ -1665,12 +1665,8 @@ export class MsgStore {
         V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
       ) {
         const conversation = this.localOptions?.enableCloudConversation
-          ? this.rootStore.conversationStore?.conversations.get(
-              conversationId as string
-            )
-          : this.rootStore.localConversationStore?.conversations.get(
-              conversationId as string
-            );
+          ? this.rootStore.conversationStore?.conversations.get(conversationId as string)
+          : this.rootStore.localConversationStore?.conversations.get(conversationId as string);
 
         if (conversation) {
           let aitMsgs = conversation.aitMsgs || [];
@@ -1699,17 +1695,10 @@ export class MsgStore {
     this.logger?.log("_onReceiveP2PMessageReadReceipts: ", data);
     data.forEach((item) => {
       const oldConversation = this.localOptions?.enableCloudConversation
-        ? this.rootStore.conversationStore?.conversations.get(
-            item?.conversationId as string
-          )
-        : this.rootStore.localConversationStore?.conversations.get(
-            item.conversationId as string
-          );
+        ? this.rootStore.conversationStore?.conversations.get(item?.conversationId as string)
+        : this.rootStore.localConversationStore?.conversations.get(item.conversationId as string);
 
-      if (
-        oldConversation &&
-        (item?.timestamp || 0) > (oldConversation.msgReceiptTime || 0)
-      ) {
+      if (oldConversation && (item?.timestamp || 0) > (oldConversation.msgReceiptTime || 0)) {
         if (this.localOptions?.enableCloudConversation) {
           this.rootStore.conversationStore?.updateConversation([
             //@ts-ignore
@@ -1730,17 +1719,13 @@ export class MsgStore {
     });
   }
 
-  private _onReceiveTeamMessageReadReceipts(
-    data: V2NIMTeamMessageReadReceipt[]
-  ): void {
+  private _onReceiveTeamMessageReadReceipts(data: V2NIMTeamMessageReadReceipt[]): void {
     this.logger?.log("_onReceiveTeamMessageReadReceipts: ", data);
     // 群消息中，同一条消息可能收到多条消息的回执，需要按照已读数量排序，服务端下发可能顺序不一致，端上排序，保证最后的已读未读情况覆盖之前的
     data.sort((a, b) => (a?.readCount || 0) - (b?.readCount || 0));
     data.forEach((msgReadReceipt) => {
       const conversationId = msgReadReceipt.conversationId;
-      const msg = this.getMsg(conversationId, [
-        msgReadReceipt.messageClientId as string,
-      ])[0];
+      const msg = this.getMsg(conversationId, [msgReadReceipt.messageClientId as string])[0];
 
       if (msg) {
         const newMsg = this._updateReceiptMsg(msg, {
@@ -1795,9 +1780,7 @@ export class MsgStore {
     content: string
   ): V2NIMMessagePushConfig | undefined {
     function getForcePushIDsList(obj: YxAitMsg): string[] | undefined {
-      return Object.keys(obj).includes(AT_ALL_ACCOUNT)
-        ? void 0
-        : Object.keys(obj);
+      return Object.keys(obj).includes(AT_ALL_ACCOUNT) ? void 0 : Object.keys(obj);
     }
 
     const pushInfo: V2NIMMessagePushConfig = {
@@ -1813,9 +1796,7 @@ export class MsgStore {
     const recallMsg: V2NIMMessageForUI = {
       ...msg,
       isSelf: true,
-      sendingState:
-        V2NIMConst.V2NIMMessageSendingState
-          .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED,
+      sendingState: V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED,
       messageType: V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM,
       recallType: "reCallMsg",
       messageClientId: `recall-${msg.messageClientId}`,
@@ -1849,34 +1830,20 @@ export class MsgStore {
     return recallMsg;
   }
 
-  private _createBeReCallMsg(
-    data: V2NIMMessageRevokeNotification
-  ): V2NIMMessageForUI {
+  private _createBeReCallMsg(data: V2NIMMessageRevokeNotification): V2NIMMessageForUI {
     // @ts-ignore
     return {
       ...data.messageRefer,
-      isSelf:
-        data.messageRefer?.senderId ===
-        this.rootStore.userStore.myUserInfo.accountId,
-      sendingState:
-        V2NIMConst.V2NIMMessageSendingState
-          .V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED,
+      isSelf: data.messageRefer?.senderId === this.rootStore.userStore.myUserInfo.accountId,
+      sendingState: V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SUCCEEDED,
       messageType: V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM,
       recallType: "beReCallMsg",
       messageClientId: `recall-${data.messageRefer?.messageClientId}`,
     };
   }
 
-  private _getAIConfig(
-    msg: V2NIMMessageForUI
-  ): V2NIMMessageAIConfigParams | undefined {
-    const {
-      serverExtension,
-      conversationId,
-      receiverId,
-      messageType,
-      text = "",
-    } = msg;
+  private _getAIConfig(msg: V2NIMMessageForUI): V2NIMMessageAIConfigParams | undefined {
+    const { serverExtension, conversationId, receiverId, messageType, text = "" } = msg;
 
     let serverExt;
 
@@ -1890,9 +1857,7 @@ export class MsgStore {
     const yxAitMsg = serverExt.yxAitMsg || {};
     // 回复消息
     const replyMsg = this.getReplyMsgActive(conversationId as string);
-    const { relation } = this.rootStore.uiStore.getRelation(
-      receiverId as string
-    );
+    const { relation } = this.rootStore.uiStore.getRelation(receiverId as string);
     const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
 
     let aiConfig: V2NIMMessageAIConfigParams | undefined = void 0;
@@ -1903,15 +1868,11 @@ export class MsgStore {
         let _msgs = (this.msgs.get(conversationId as string) || [])
           .slice(-AI_MESSAGE_LIMIT)
           .filter(
-            (item) =>
-              item.messageType ===
-              V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
+            (item) => item.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
           );
 
         // 找到第一条自己发的消息，从此时开始作为真正的上下文
-        const myIndex = _msgs.findIndex(
-          (item) => item.senderId === myAccountId
-        );
+        const myIndex = _msgs.findIndex((item) => item.senderId === myAccountId);
 
         _msgs = myIndex === -1 ? [] : _msgs.slice(myIndex);
 
@@ -1952,9 +1913,7 @@ export class MsgStore {
 
     // 找到最早的 at 数字人
     const aiAtAccount = this._findMinStart(newYxAitMsg);
-    const aiAtMember = this.rootStore.aiUserStore.aiUsers.get(
-      aiAtAccount || ""
-    );
+    const aiAtMember = this.rootStore.aiUserStore.aiUsers.get(aiAtAccount || "");
 
     // 表示 at 数字人
     if (aiAtMember) {
@@ -1968,10 +1927,7 @@ export class MsgStore {
     // 表示此时有回复消息
     if (replyMsg && aiConfig) {
       // 只有回复的是文本消息需要带上下文，其他类型消息不用带上下文
-      if (
-        replyMsg.messageType ===
-        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
-      ) {
+      if (replyMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
         aiConfig.messages = [
           {
             role: "user" as unknown as V2NIMAIModelRoleType,
@@ -2007,5 +1963,325 @@ export class MsgStore {
     }
 
     return minStartKey;
+  }
+
+  /**
+   * 处理消息通知
+   * @param messages 收到的消息列表
+   */
+  private _handleMessageNotification(messages: V2NIMMessage[]): void {
+    // 检查是否启用了桌面通知
+    console.log("Desktop Notification Options:", this.localOptions);
+    if (!this.localOptions?.enableDesktopNotification) {
+      return;
+    }
+
+    const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
+    const currentConversationId = this.rootStore.uiStore.selectedConversation;
+
+    // 检测文档/窗口是否处于隐藏状态（最小化、切换标签页等）
+    // 当窗口隐藏时，即使是当前会话也应该发送通知
+    const isDocumentHidden = typeof document !== "undefined" && document.hidden;
+
+    // 过滤需要通知的消息
+    const notifiableMessages = messages.filter((msg) => {
+      // 不是自己发送的消息
+      if (msg.senderId === myAccountId) {
+        return false;
+      }
+      // 只有当窗口可见时，才跳过当前会话的消息
+      // 窗口隐藏时（最小化），当前会话的消息也需要通知
+      if (!isDocumentHidden && msg.conversationId === currentConversationId) {
+        return false;
+      }
+      // 排除通知类型的消息
+      if (msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION) {
+        return false;
+      }
+      return true;
+    });
+
+    // 发送通知（合并多条消息为一个通知）
+    if (notifiableMessages.length > 0) {
+      // 只取最新的一条消息进行通知
+      const latestMsg = notifiableMessages[notifiableMessages.length - 1];
+      this._showDesktopNotification(latestMsg, notifiableMessages.length);
+    }
+  }
+
+  /**
+   * 显示桌面通知
+   * @param msg 消息
+   * @param count 消息数量
+   */
+  private _showDesktopNotification(msg: V2NIMMessage, count: number): void {
+    console.log("Preparing to show desktop notification:", msg, count);
+    // 获取发送者名称
+    const senderName = this.rootStore.uiStore.getAppellation({
+      account: msg.senderId as string,
+      teamId:
+        msg.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+          ? msg.receiverId
+          : undefined,
+    });
+
+    // 获取消息内容摘要
+    const msgContent = getMsgContentTipByType({
+      messageType: msg.messageType,
+      text: msg.text,
+    });
+
+    // 判断是否为群聊
+    const isTeam =
+      msg.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM;
+
+    // 获取群名称（如果是群聊）
+    let teamName = "";
+    if (isTeam && msg.receiverId) {
+      const team = this.rootStore.teamStore.teams.get(msg.receiverId);
+      teamName = team?.name || msg.receiverId;
+    }
+
+    // 构建通知标题
+    let title = "";
+    if (count > 1) {
+      title = t("newMessagesCount").replace("{count}", count.toString());
+    } else if (isTeam) {
+      title = teamName;
+    } else {
+      title = senderName;
+    }
+
+    // 构建通知内容
+    let body = "";
+    if (count > 1) {
+      body = t("clickToView");
+    } else if (isTeam) {
+      body = `${senderName}: ${msgContent}`;
+    } else {
+      body = msgContent;
+    }
+
+    // 发送通知
+    showNotification({
+      title,
+      body,
+      conversationId: msg.conversationId,
+    });
+  }
+
+  /**
+   * 搜索云端历史消息
+   * @param keywords 搜索关键词列表
+   * @param conversationId 会话ID
+   * @param limit 搜索结果数量限制，默认50
+   * @returns Promise<V2NIMMessageForUI[]>
+   */
+  async searchCloudHistoryActive(
+    keywords: string[],
+    conversationId: string,
+    limit: number = 10,
+    searchStartTime: number = 0
+  ): Promise<V2NIMMessageForUI[]> {
+    try {
+      this.logger?.info("searchCloudHistoryActive", {
+        keywords,
+        conversationId,
+        limit,
+        searchStartTime,
+      });
+
+      const result = await this.nim?.messageService?.searchCloudMessagesEx({
+        conversationId: conversationId,
+        keywordList: keywords,
+        keywordMatchType: V2NIMConst.V2NIMSearchKeywordMathType.V2NIM_SEARCH_KEYWORD_MATH_TYPE_OR,
+        messageTypes: [V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT],
+        searchStartTime: searchStartTime, // 分页搜索的起始时间
+        searchTimePeriod: 0, // 不限制时间范围
+        limit: limit, // 搜索结果限制
+      });
+
+      if (!result) {
+        throw new Error("Search result is null");
+      }
+
+      // 提取所有消息
+      const messages: V2NIMMessage[] = [];
+      result.items.forEach((item) => {
+        messages.push(...item.messages);
+      });
+
+      // 转换为UI格式并按时间倒序排列（直接将V2NIMMessage转换为V2NIMMessageForUI）
+      const uiMessages: V2NIMMessageForUI[] = messages
+        .slice(0, limit) // 限制数量
+        .map((msg: V2NIMMessage) => msg as V2NIMMessageForUI)
+        .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+
+      this.logger?.info("searchCloudHistoryActive success:", uiMessages);
+      return uiMessages;
+    } catch (error) {
+      this.logger?.error("searchCloudHistoryActive failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * 搜索本地历史消息
+   * @param keywords 搜索关键词列表
+   * @param conversationId 会话ID
+   * @returns Promise<V2NIMMessageForUI[]>
+   */
+  async searchLocalHistoryActive(
+    keywords: string[],
+    conversationId: string,
+    limit: number = 10,
+    searchStartTime: number = 0
+  ): Promise<V2NIMMessageForUI[]> {
+    try {
+      this.logger?.info("searchLocalHistoryActive:", {
+        keywords,
+        conversationId,
+        limit,
+        searchStartTime,
+      });
+
+      const result = await this.nim?.messageService?.searchLocalMessages({
+        conversationId: conversationId,
+        keywordList: keywords,
+        keywordMatchType: V2NIMConst.V2NIMSearchKeywordMathType.V2NIM_SEARCH_KEYWORD_MATH_TYPE_OR,
+        messageTypes: [V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT],
+        searchStartTime: searchStartTime, // 分页搜索的起始时间
+        searchTimePeriod: 0, // 不限制时间范围
+        limit: limit, // 搜索结果限制
+      });
+
+      if (!result) {
+        throw new Error("searchLocalHistoryActive result is null");
+      }
+
+      // 提取所有消息
+      const messages: V2NIMMessage[] = [];
+      result.items.forEach((item) => {
+        messages.push(...item.messages);
+      });
+
+      // 转换为UI格式并按时间倒序排列（直接将V2NIMMessage转换为V2NIMMessageForUI）
+      const uiMessages: V2NIMMessageForUI[] = messages
+        .map((msg: V2NIMMessage) => msg as V2NIMMessageForUI)
+        .sort((a, b) => (b.createTime || 0) - (a.createTime || 0));
+
+      this.logger?.info("searchLocalHistoryActive success:", uiMessages);
+      return uiMessages;
+    } catch (error) {
+      this.logger?.error("searchLocalHistoryActive failed:", error);
+      throw error;
+    }
+  }
+
+  /**
+   * 执行消息搜索（智能选择云端或本地）
+   * @param keyword 搜索关键词
+   * @param conversationId 会话ID
+   * @param useCloudSearch 是否使用云端搜索，默认从全局设置获取
+   * @param limit 搜索结果数量限制
+   * @param searchStartTime 搜索起始时间
+   * @returns Promise<V2NIMMessageForUI[]>
+   */
+  async searchHistoryActive(
+    keyword: string,
+    conversationId: string,
+    limit: number = 10,
+    searchStartTime: number = 0
+  ): Promise<V2NIMMessageForUI[]> {
+    if (!keyword.trim()) {
+      return [];
+    }
+
+    const keywords = [keyword.trim()];
+
+    // 判断使用云端搜索还是本地搜索
+    const enableCloudSearch = this.localOptions?.enableCloudSearch;
+
+    if (enableCloudSearch) {
+      return await this.searchCloudHistoryActive(keywords, conversationId, limit, searchStartTime);
+    } else {
+      return await this.searchLocalHistoryActive(keywords, conversationId, limit, searchStartTime);
+    }
+  }
+
+  /**
+   * 跳转到指定消息并加载上下文
+   * @param targetMessage - 目标消息
+   * @param conversationId - 会话ID
+   * @param contextSize - 上下文消息数量，默认15条
+   */
+  async jumpToMessageActive(
+    targetMessage: V2NIMMessageForUI,
+    conversationId: string,
+    contextSize: number = 15
+  ): Promise<V2NIMMessageForUI[]> {
+    try {
+      this.logger?.log("jumpToMessageActive", targetMessage, conversationId, contextSize);
+
+      // 1. 完全清除该会话的所有消息
+      this.msgs.delete(conversationId);
+
+      // 2. 加载目标消息前面的消息（历史消息）
+      const prevMessages = await this.nim?.messageService?.getMessageList({
+        conversationId,
+        anchorMessage: targetMessage,
+        limit: Math.floor(contextSize / 2), // 前面加载一半
+        direction: V2NIMQueryDirection.V2NIM_QUERY_DIRECTION_DESC, // 向前查询获取历史消息
+      });
+
+      // 3. 加载目标消息后面的消息（后续消息）
+      const nextMessages = await this.nim?.messageService?.getMessageList({
+        conversationId,
+        anchorMessage: targetMessage,
+        limit: Math.floor(contextSize / 2), // 后面加载一半
+        direction: V2NIMQueryDirection.V2NIM_QUERY_DIRECTION_ASC, // 向后查询获取后续消息
+      });
+
+      // 4. 组合所有消息：历史消息 + 目标消息 + 后续消息
+      const allMessages = [...(prevMessages || []), targetMessage, ...(nextMessages || [])];
+
+      // 5. 按时间排序确保消息顺序正确
+      allMessages.sort((a, b) => (a.createTime || 0) - (b.createTime || 0));
+
+      // 6. 添加到消息存储
+      this.addMsg(conversationId, allMessages);
+
+      // 7. 设置消息状态，表示这是通过跳转加载的消息
+      this.rootStore.uiStore.setJumpedToMessage(true);
+      this.rootStore.uiStore.setTargetMessageId(targetMessage.messageClientId || "");
+
+      // 9. 重置分页状态，确保可以继续加载更多消息
+      // 通知UI重置加载状态
+      this.resetLoadingStates(conversationId);
+
+      this.logger?.log("jumpToMessageActive success", allMessages.length);
+      return allMessages;
+    } catch (error) {
+      this.logger?.error("jumpToMessageActive failed: ", targetMessage, error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 重置消息加载状态，确保跳转到消息后可以继续加载
+   * @param conversationId - 会话ID
+   */
+  private resetLoadingStates(conversationId: string): void {
+    // 发送事件通知UI重置分页状态
+    // 这里使用事件而不是直接修改UI状态，保持解耦
+    if (typeof window !== "undefined" && window.postMessage) {
+      window.postMessage(
+        {
+          type: "RESET_MESSAGE_LOADING_STATE",
+          conversationId,
+        },
+        "*"
+      );
+    }
   }
 }

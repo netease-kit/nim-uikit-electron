@@ -38,7 +38,7 @@
 <script lang="ts" setup>
 /** 会话列表主界面 */
 
-import { onUnmounted, ref } from "vue";
+import { onUnmounted, ref, watch, onMounted } from "vue";
 import { autorun } from "mobx";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
@@ -98,13 +98,13 @@ const handleScroll = async (e: Event) => {
             ?.sortOrder || 0;
         await store?.conversationStore?.getConversationListActive(
           offset,
-          limit
+          limit,
         );
       } else {
         const offset = store?.uiStore.localConversations?.length || 0;
         await store?.localConversationStore?.getConversationListActive(
           offset,
-          limit
+          limit,
         );
       }
     } catch (error) {
@@ -115,17 +115,52 @@ const handleScroll = async (e: Event) => {
   }
 };
 
+/** 订阅当前会话方在线离线状态 */
+const subscribeUserStatus = (
+  conversations: (V2NIMConversationForUI | V2NIMLocalConversationForUI)[],
+) => {
+  const loginStateVisible = store?.localOptions?.loginStateVisible;
+  if (loginStateVisible) {
+    // 订阅会话列表中 单聊的在线离线状态
+    const accounts = conversations
+      .filter(
+        (item) =>
+          item.type ===
+          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P,
+      )
+      .map((item) => {
+        if (item.conversationId) {
+          return nim?.conversationIdUtil?.parseConversationTargetId(
+            item.conversationId,
+          );
+        }
+      });
+    // 将 accounts 拆分成多个长度不超过 100 的子数组
+    const chunkSize = 100;
+
+    const length = accounts.length;
+
+    for (let i = 0; i < length; i += chunkSize) {
+      const chunk = accounts.slice(i, i + chunkSize);
+
+      if (chunk.length > 0) {
+        store.subscriptionStore.subscribeUserStatusActive(chunk as string[]);
+      }
+    }
+  }
+};
+
 /** 会话免打扰 */
 const handleConversationItemMute = async (
-  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI | null
+  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI | null,
 ) => {
   const muteMode = !conversation?.mute;
   const conversationType = nim?.conversationIdUtil?.parseConversationType(
-    conversation?.conversationId || ""
+    conversation?.conversationId || "",
   );
   const conversationTarget =
     nim?.conversationIdUtil?.parseConversationTargetId(
-      conversation?.conversationId || ""
+      conversation?.conversationId || "",
     ) || "";
 
   if (
@@ -136,7 +171,7 @@ const handleConversationItemMute = async (
       conversationTarget,
       muteMode
         ? V2NIMConst.V2NIMP2PMessageMuteMode.V2NIM_P2P_MESSAGE_MUTE_MODE_ON
-        : V2NIMConst.V2NIMP2PMessageMuteMode.V2NIM_P2P_MESSAGE_MUTE_MODE_OFF
+        : V2NIMConst.V2NIMP2PMessageMuteMode.V2NIM_P2P_MESSAGE_MUTE_MODE_OFF,
     );
   } else {
     await store?.teamStore.setTeamMessageMuteModeActive(
@@ -147,7 +182,7 @@ const handleConversationItemMute = async (
         : V2NIMConst.V2NIMTeamType.V2NIM_TEAM_TYPE_SUPER,
       muteMode
         ? V2NIMConst.V2NIMTeamMessageMuteMode.V2NIM_TEAM_MESSAGE_MUTE_MODE_ON
-        : V2NIMConst.V2NIMTeamMessageMuteMode.V2NIM_TEAM_MESSAGE_MUTE_MODE_OFF
+        : V2NIMConst.V2NIMTeamMessageMuteMode.V2NIM_TEAM_MESSAGE_MUTE_MODE_OFF,
     );
   }
 };
@@ -155,7 +190,7 @@ const handleConversationItemMute = async (
 let flag = false;
 // 点击会话
 const handleConversationItemClick = async (
-  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI
+  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI,
 ) => {
   if (flag) return;
   currentMoveSessionId.value = "";
@@ -170,11 +205,11 @@ const handleConversationItemClick = async (
     ) {
       if (enableCloudConversation) {
         await store?.conversationStore?.markConversationReadActive(
-          conversation.conversationId || ""
+          conversation.conversationId || "",
         );
       } else {
         await store?.localConversationStore?.markConversationReadActive(
-          conversation.conversationId || ""
+          conversation.conversationId || "",
         );
       }
     }
@@ -191,16 +226,16 @@ const handleConversationItemClick = async (
 
 // 删除会话
 const handleConversationItemDelete = async (
-  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI
+  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI,
 ) => {
   try {
     if (enableCloudConversation) {
       await store?.conversationStore?.deleteConversationActive(
-        conversation.conversationId || ""
+        conversation.conversationId || "",
       );
     } else {
       await store?.localConversationStore?.deleteConversationActive(
-        conversation.conversationId || ""
+        conversation.conversationId || "",
       );
     }
     currentMoveSessionId.value = "";
@@ -214,19 +249,19 @@ const handleConversationItemDelete = async (
 
 // 置顶会话
 const handleConversationItemStickTop = async (
-  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI
+  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI,
 ) => {
   if (conversation.stickTop) {
     try {
       if (enableCloudConversation) {
         await store?.conversationStore?.stickTopConversationActive(
           conversation.conversationId || "",
-          false
+          false,
         );
       } else {
         await store?.localConversationStore?.stickTopConversationActive(
           conversation.conversationId || "",
-          false
+          false,
         );
       }
     } catch {
@@ -240,12 +275,12 @@ const handleConversationItemStickTop = async (
       if (enableCloudConversation) {
         await store?.conversationStore?.stickTopConversationActive(
           conversation.conversationId || "",
-          true
+          true,
         );
       } else {
         await store?.localConversationStore?.stickTopConversationActive(
           conversation.conversationId || "",
-          true
+          true,
         );
       }
     } catch {
@@ -266,9 +301,24 @@ const conversationListWatch = autorun(() => {
   conversationList.value = _conversationList?.sort(
     (
       a: V2NIMConversationForUI | V2NIMLocalConversationForUI,
-      b: V2NIMConversationForUI | V2NIMLocalConversationForUI
-    ) => (b.sortOrder || 0) - (a.sortOrder || 0)
+      b: V2NIMConversationForUI | V2NIMLocalConversationForUI,
+    ) => (b.sortOrder || 0) - (a.sortOrder || 0),
   ) as (V2NIMConversationForUI | V2NIMLocalConversationForUI)[];
+});
+
+// 监听数组长度变化
+watch(
+  () => conversationList?.value?.length, // 监听 length 属性
+  () => {
+    subscribeUserStatus(conversationList?.value);
+  },
+);
+
+// 监听会话列表数据变更，实时订阅在线离线状态
+onMounted(() => {
+  if (conversationList.value?.length) {
+    subscribeUserStatus(conversationList?.value);
+  }
 });
 
 onUnmounted(() => {

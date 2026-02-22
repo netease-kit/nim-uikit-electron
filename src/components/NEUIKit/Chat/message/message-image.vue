@@ -1,50 +1,46 @@
 <template>
-  <div class="message-image-container" @click="handleImageClick">
-    <div
-      class="msg-image loading-container"
+  <!-- 发送中状态（包含上传阶段）：统一显示预览图，上传时叠加进度环 -->
+  <div v-if="isSending" class="message-image-sending">
+    <div class="image-preview-wrapper">
+      <img
+        class="msg-image"
+        :class="{ 'uploading-preview': isUploading }"
+        :src="msg.previewImg || thumbImageUrl || imageUrl"
+      />
+      <!-- 上传进度信息：仅在上传中显示 -->
+      <div v-if="isUploading" class="upload-overlay">
+        <!-- 圆形进度环 + 取消按钮 -->
+        <div class="circular-progress-wrapper">
+          <CircularProgress :progress="uploadProgress" :size="56" />
+          <div class="cancel-button" @click="handleCancel">
+            <Icon type="icon-guanbi" :size="16" color="#fff"></Icon>
+          </div>
+        </div>
+        <!-- 左下角文件大小 -->
+        <div class="file-size-badge">{{ formattedSize }}</div>
+      </div>
+    </div>
+  </div>
+  <!-- 非发送中状态：发送成功、失败、未知等 -->
+  <div v-else class="message-image-container" @click="handleImageClick">
+    <!-- 发送成功或未知状态 -->
+    <img
       v-if="
+        isMessageNoError(msg.messageStatus?.errorCode) ||
         msg.sendingState ==
-        V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
+          V2NIMConst.V2NIMMessageSendingState
+            .V2NIM_MESSAGE_SENDING_STATE_UNKNOWN
       "
-    >
-      <img
-        class="msg-image"
-        :lazy-load="true"
-        mode="aspectFill"
-        :src="msg.previewImg || thumbImageUrl || imageUrl"
-      />
-    </div>
-    <div
       class="msg-image"
-      v-else-if="
-        msg.sendingState ==
-        V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_UNKNOWN
-      "
-    >
-      <img
-        class="msg-image"
-        :lazy-load="true"
-        mode="aspectFill"
-        :src="msg.previewImg || thumbImageUrl || imageUrl"
-      />
-    </div>
-    <div v-else-if="isMessageNoError(msg.messageStatus?.errorCode)">
-      <img
-        v-if="thumbImageUrl || imageUrl"
-        class="msg-image"
-        :lazy-load="true"
-        mode="aspectFill"
-        :src="thumbImageUrl || imageUrl"
-      />
-    </div>
+      :src="localThumbPath || thumbImageUrl || imageUrl || msg.previewImg"
+    />
+    <!-- 发送失败状态 -->
     <img
       v-else-if="
         msg.sendingState ==
         V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED
       "
       class="msg-image"
-      :lazy-load="true"
-      mode="aspectFill"
       :src="msg.previewImg || thumbImageUrl || imageUrl"
     />
   </div>
@@ -59,27 +55,80 @@
     :downloadFileName="downloadFileName"
     :originHeight="originHeight"
     :originWidth="originWidth"
+    :isLoading="isSourceLoading"
   />
 </template>
 
 <script lang="ts" setup>
 /** 图片消息 */
 import { ref, computed, watch, onMounted } from "vue";
+import { parseFileSize } from "@xkit-yx/utils";
 import { V2NIMConst } from "../../utils/constants";
 import { isMessageNoError } from "../../utils/msg";
 import PreviewImage from "../../CommonComponents/PreviewImage.vue";
+import CircularProgress from "../../CommonComponents/CircularProgress.vue";
+import Icon from "../../CommonComponents/Icon.vue";
 import type { V2NIMMessageImageAttachment } from "node-nim/types/v2_def/v2_nim_struct_def";
 import type { V2NIMMessageForUI } from "../../store/types";
+import {
+  downloadImageThumbnail,
+  downloadImageSource,
+  checkLocalFileExists,
+  toLocalFileUrl,
+} from "../../utils/attachment-download";
 import { getContextState } from "../../utils/init";
 
 const props = withDefaults(
   defineProps<{
     msg: V2NIMMessageForUI;
   }>(),
-  {}
+  {},
 );
 
-const { nim } = getContextState();
+const { store } = getContextState();
+
+// 判断是否正在发送中（包含上传和发送两个阶段）
+const isSending = computed(() => {
+  return (
+    props.msg.sendingState ===
+    V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
+  );
+});
+
+// 判断是否正在上传（发送中且进度小于100%时显示进度条）
+const isUploading = computed(() => {
+  const progress = props.msg.uploadProgress;
+  // 只有进度小于 100% 且正在发送中才显示上传进度组件
+  return (
+    isSending.value &&
+    typeof progress === "number" &&
+    progress >= 0 &&
+    progress < 100
+  );
+});
+
+// 上传进度
+const uploadProgress = computed(() => props.msg.uploadProgress ?? 0);
+
+// 图片附件信息
+const imageAttachment = computed(
+  () => props.msg.attachment as V2NIMMessageImageAttachment,
+);
+const imageSize = computed(() => imageAttachment.value?.size || 0);
+
+// 格式化文件大小
+const formattedSize = computed(() => {
+  return parseFileSize(imageSize.value);
+});
+
+// 取消上传
+const handleCancel = async () => {
+  try {
+    await store?.msgStore.cancelMessageAttachmentUploadActive(props.msg);
+  } catch (error) {
+    console.error('Cancel upload failed:', error);
+  }
+};
 
 // 预览状态
 const isPreviewVisible = ref(false);
@@ -88,36 +137,75 @@ const currentPreviewUrl = ref("");
 
 // 缩略图URL
 const thumbImageUrl = ref("");
+// 本地缩略图路径（已转换为可用URL）
+const localThumbPath = ref("");
+// 本地源文件路径（已转换为可用URL）
+const localSourcePath = ref("");
+// 源文件是否正在加载
+const isSourceLoading = ref(false);
 
 const originHeight = computed(
   /**
    * 计算消息体的最大高度
    * @returns {number} 消息附件的高度（如果存在且有效）或默认的最大高度
    */
-  //@ts-ignore
-
-  () => Number(props.msg?.attachment?.height) || 200
+  () => Number(imageAttachment.value?.height) || 200,
 );
 const originWidth = computed(
-  //@ts-ignore
-
-  () => Number(props.msg?.attachment?.width) || 200 * (originHeight.value / 200)
+  () =>
+    Number(imageAttachment.value?.width) || 200 * (originHeight.value / 200),
 );
 
 // 点击图片处理
-const handleImageClick = () => {
-  //@ts-ignore
-  const url = props.msg.attachment?.url;
-  if (url) {
-    currentPreviewUrl.value = url;
-    isPreviewVisible.value = true;
+const handleImageClick = async () => {
+  const attachment = imageAttachment.value;
+  if (!attachment) return;
+
+  // 先打开预览，显示缩略图
+  currentPreviewUrl.value =
+    localThumbPath.value || thumbImageUrl.value || imageUrl.value || "";
+  isPreviewVisible.value = true;
+
+  // 检查源文件是否已存在本地
+  if (attachment.path) {
+    const exists = await checkLocalFileExists(attachment.path);
+    if (exists) {
+      const localUrl = toLocalFileUrl(attachment.path);
+      localSourcePath.value = localUrl;
+      currentPreviewUrl.value = localUrl;
+      return;
+    }
   }
+
+  // 如果已有本地源文件路径，直接使用
+  if (localSourcePath.value) {
+    currentPreviewUrl.value = localSourcePath.value;
+    return;
+  }
+
+  // 需要下载源文件
+  isSourceLoading.value = true;
+  const result = await downloadImageSource(
+    attachment,
+    props.msg.messageClientId,
+  );
+
+  if (result.success && result.localPath) {
+    const localUrl = toLocalFileUrl(result.localPath);
+    localSourcePath.value = localUrl;
+    currentPreviewUrl.value = localUrl;
+  } else {
+    // 下载失败，使用远程URL
+    currentPreviewUrl.value = attachment.url || "";
+  }
+  isSourceLoading.value = false;
 };
 
 // 关闭预览
 const handlePreviewClose = () => {
   isPreviewVisible.value = false;
   currentPreviewUrl.value = "";
+  isSourceLoading.value = false;
 };
 // 图片URL计算属性
 const imageUrl = computed(() => {
@@ -162,37 +250,32 @@ const getImageExtension = (url: string) => {
   return ".jpg";
 };
 
-// 获取缩略图URL
-const handleImageThumbUrl = (attachment: V2NIMMessageImageAttachment) => {
-  const size = attachment?.size || 0;
+// 下载缩略图到本地
+const handleImageThumbUrl = async (attachment: V2NIMMessageImageAttachment) => {
+  if (!attachment) return;
 
+  const size = attachment?.size || 0;
   const imgSizeConstant = 1024 * 1024 * 20;
 
-  const width = attachment?.width;
-  const height = attachment?.height;
-
-  // 小于20M 才能使用缩略图功能，大于20M，建议以文件消息进行发送
+  // 小于20M 才能使用缩略图功能，大于20M 直接下载源文件
   if (size < imgSizeConstant) {
-    if (width && height) {
-      nim?.storageService
-        ?.getImageThumbUrl(attachment, {
-          height: 400,
-          width: Math.floor((400 * width) / height),
-        })
-        /**
-         * Callback function that updates the thumbImageUrl ref with the URL from the response
-         * @param {Object} res - The response object containing the URL
-         * @param {string} res.url - The URL to set as the thumbnail image
-         */
-        .then((res) => {
-          thumbImageUrl.value = res.url;
-        })
-        .catch((error) => {
-          console.log("getImageThumbUrl error", error);
-        });
+    // 下载缩略图到本地
+    const result = await downloadImageThumbnail(
+      attachment,
+      props.msg.messageClientId,
+    );
+    if (result.success && result.localPath) {
+      localThumbPath.value = toLocalFileUrl(result.localPath);
     }
   } else {
-    thumbImageUrl.value = attachment?.url as string;
+    // 大于20M，直接下载源文件
+    const result = await downloadImageSource(
+      attachment,
+      props.msg.messageClientId,
+    );
+    if (result.success && result.localPath) {
+      localThumbPath.value = toLocalFileUrl(result.localPath);
+    }
   }
 };
 
@@ -207,11 +290,79 @@ watch(
   () => {
     const attachment = props.msg.attachment as V2NIMMessageImageAttachment;
     handleImageThumbUrl(attachment);
-  }
+  },
 );
 </script>
 
-<style scoped>
+<style scoped lang="scss">
+/* 发送中容器（包含上传阶段） */
+.message-image-sending {
+  position: relative;
+}
+
+.image-preview-wrapper {
+  position: relative;
+  display: inline-block;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.uploading-preview {
+  opacity: 0.7;
+  filter: brightness(0.6);
+}
+
+.upload-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 圆形进度环容器 */
+.circular-progress-wrapper {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 取消按钮（覆盖在进度环中心） */
+.cancel-button {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  cursor: pointer;
+  padding: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.2s;
+
+  &:hover {
+    background-color: rgba(255, 255, 255, 0.2);
+  }
+}
+
+/* 左下角文件大小徽章 */
+.file-size-badge {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  padding: 2px 6px;
+  background-color: rgba(0, 0, 0, 0.5);
+  border-radius: 4px;
+  font-size: 12px;
+  color: #fff;
+}
+
 .message-image-container {
   cursor: pointer;
 }
@@ -224,34 +375,6 @@ watch(
   min-width: 80px;
   height: 180px;
   display: block;
-}
-
-.loading-container {
-  position: relative;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.loading-spinner {
-  width: 20px;
-  height: 20px;
-  border: 2px solid #f3f3f3;
-  border-top: 2px solid #3498db;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-.msg-failed-image {
-  margin: 20px;
+  border-radius: 8px;
 }
 </style>

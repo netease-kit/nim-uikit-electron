@@ -6,6 +6,7 @@
     "module": "ESNext",
     "lib": ["ES2020", "DOM", "DOM.Iterable"],
     "skipLibCheck": true,
+    "types": ["vite/client", "node"],
 
     /* Bundler mode */
     "moduleResolution": "node",
@@ -19,6 +20,7 @@
       "@*": ["./src/*"],
       "@ant-design/icons-vue": ["./node_modules/@ant-design/icons-vue"]
     },
+    "typeRoots": ["./node_modules/@types", "./electron"],
 
     /* Linting */
     "strict": true,

@@ -89,7 +89,7 @@
 /** 通讯录主界面 */
 import Icon from "../CommonComponents/Icon.vue";
 import Badge from "../CommonComponents/Badge.vue";
-import FriendList from "./friend-list.vue";
+import FriendList from "./friend/friend-list.vue";
 import TeamList from "./team-list.vue";
 import BlackList from "./black-list.vue";
 import ValidList from "./valid-list.vue";

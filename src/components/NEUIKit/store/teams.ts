@@ -39,8 +39,7 @@ export class TeamStore {
     makeAutoObservable(this);
     this.logger = rootStore.logger;
 
-    this._onReceiveTeamJoinActionInfo =
-      this._onReceiveTeamJoinActionInfo.bind(this);
+    this._onReceiveTeamJoinActionInfo = this._onReceiveTeamJoinActionInfo.bind(this);
     this._onSyncFailed = this._onSyncFailed.bind(this);
     this._onSyncFinished = this._onSyncFinished.bind(this);
     this._onSyncStarted = this._onSyncStarted.bind(this);
@@ -55,10 +54,7 @@ export class TeamStore {
     this._onTeamMemberLeft = this._onTeamMemberLeft.bind(this);
 
     /** 群组申请动作回调 */
-    nim.teamService?.on(
-      "receiveTeamJoinActionInfo",
-      this._onReceiveTeamJoinActionInfo
-    );
+    nim.teamService?.on("receiveTeamJoinActionInfo", this._onReceiveTeamJoinActionInfo);
     /** 群组信息数据同步失败 */
     nim.teamService?.on("syncFailed", this._onSyncFailed);
     /** 群组信息数据同步完成 */
@@ -84,10 +80,7 @@ export class TeamStore {
     /** 群组成员离开回调(非自己) */
     nim.teamService?.on("teamMemberLeft", this._onTeamMemberLeft);
     /** 监听群消息免打扰模式变更事件 */
-    nim.settingService?.on(
-      "teamMessageMuteModeChanged",
-      this._onTeamMessageMuteModeChanged
-    );
+    nim.settingService?.on("teamMessageMuteModeChanged", this._onTeamMessageMuteModeChanged);
   }
 
   resetState(): void {
@@ -99,10 +92,7 @@ export class TeamStore {
    */
   destroy(): void {
     this.resetState();
-    this.nim.teamService?.off(
-      "receiveTeamJoinActionInfo",
-      this._onReceiveTeamJoinActionInfo
-    );
+    this.nim.teamService?.off("receiveTeamJoinActionInfo", this._onReceiveTeamJoinActionInfo);
     this.nim.teamService?.off("syncFailed", this._onSyncFailed);
     this.nim.teamService?.off("syncFinished", this._onSyncFinished);
     this.nim.teamService?.off("syncStarted", this._onSyncStarted);
@@ -111,17 +101,11 @@ export class TeamStore {
     this.nim.teamService?.off("teamInfoUpdated", this._onTeamInfoUpdated);
     this.nim.teamService?.off("teamJoined", this._onTeamJoined);
     this.nim.teamService?.off("teamLeft", this._onTeamLeft);
-    this.nim.teamService?.off(
-      "teamMemberInfoUpdated",
-      this._onTeamMemberInfoUpdated
-    );
+    this.nim.teamService?.off("teamMemberInfoUpdated", this._onTeamMemberInfoUpdated);
     this.nim.teamService?.off("teamMemberJoined", this._onTeamMemberJoined);
     this.nim.teamService?.off("teamMemberKicked", this._onTeamMemberKicked);
     this.nim.teamService?.off("teamMemberLeft", this._onTeamMemberLeft);
-    this.nim.settingService?.off(
-      "teamMessageMuteModeChanged",
-      this._onTeamMessageMuteModeChanged
-    );
+    this.nim.settingService?.off("teamMessageMuteModeChanged", this._onTeamMessageMuteModeChanged);
   }
 
   /**
@@ -208,6 +192,7 @@ export class TeamStore {
         intro,
         serverExtension,
       });
+      //@ts-ignore
       const { team } = await this.nim.teamService?.createTeam(
         {
           avatar,
@@ -215,10 +200,8 @@ export class TeamStore {
           joinMode: joinMode || this.localOptions.teamJoinMode,
           agreeMode: agreeMode || this.localOptions.teamAgreeMode,
           inviteMode: inviteMode || this.localOptions.teamInviteMode,
-          updateInfoMode:
-            updateInfoMode || this.localOptions.teamUpdateTeamMode,
-          updateExtensionMode:
-            updateExtensionMode || this.localOptions.teamUpdateExtMode,
+          updateInfoMode: updateInfoMode || this.localOptions.teamUpdateTeamMode,
+          updateExtensionMode: updateExtensionMode || this.localOptions.teamUpdateExtMode,
           name,
           intro,
           serverExtension,
@@ -253,7 +236,7 @@ export class TeamStore {
   ): Promise<V2NIMTeam> {
     try {
       this.logger?.log("applyTeamActive", teamId);
-      const team = await this.nim.teamService?.applyJoinTeam(teamId, type, "");
+      const team = (await this.nim.teamService?.applyJoinTeam(teamId, type, "")) as V2NIMTeam;
 
       this.logger?.log("applyTeamActive success", teamId);
 
@@ -336,11 +319,7 @@ export class TeamStore {
         leave,
       });
     } catch (error) {
-      this.logger?.error(
-        "transferTeamActive failed: ",
-        { teamId, type, account, leave },
-        error
-      );
+      this.logger?.error("transferTeamActive failed: ", { teamId, type, account, leave }, error);
       throw error;
     }
   }
@@ -385,11 +364,7 @@ export class TeamStore {
   }): Promise<void> {
     try {
       this.logger?.log("updateTeamActive", options);
-      const {
-        teamId,
-        type = V2NIMConst.V2NIMTeamType.V2NIM_TEAM_TYPE_NORMAL,
-        info,
-      } = options;
+      const { teamId, type = V2NIMConst.V2NIMTeamType.V2NIM_TEAM_TYPE_NORMAL, info } = options;
 
       await this.nim.teamService?.updateTeamInfo(teamId, type, info, {});
       // 后续在事件中处理
@@ -432,7 +407,7 @@ export class TeamStore {
   ): Promise<V2NIMTeam> {
     try {
       this.logger?.log("getTeamForceActive: ", teamId);
-      const res = await this.nim.teamService?.getTeamInfo(teamId, type);
+      const res = (await this.nim.teamService?.getTeamInfoFromCloud(teamId, type)) as V2NIMTeam;
 
       this.logger?.log("getTeamForceActive success", res);
       // 这里不能存入 teamStore，因为 teamStore 只有在群中的内容
@@ -460,11 +435,7 @@ export class TeamStore {
         teamType,
         muteMode,
       });
-      await this.nim.settingService?.setTeamMessageMuteMode(
-        teamId,
-        teamType,
-        muteMode
-      );
+      await this.nim.settingService?.setTeamMessageMuteMode(teamId, teamType, muteMode);
 
       this.logger?.log("setTeamMessageMuteModeActive success", {
         teamId,
@@ -485,9 +456,7 @@ export class TeamStore {
    * 被邀请者接受入群邀请
    * @param options V2NIMTeamJoinActionInfo
    */
-  async acceptTeamInviteActive(
-    options: V2NIMTeamJoinActionInfo
-  ): Promise<void> {
+  async acceptTeamInviteActive(options: V2NIMTeamJoinActionInfo): Promise<void> {
     try {
       this.logger?.log("acceptTeamInviteActive: ", options);
       await this.nim.teamService?.acceptInvitation(options);
@@ -502,9 +471,7 @@ export class TeamStore {
    * 被邀请者拒绝入群邀请
    * @param options V2NIMTeamJoinActionInfo
    */
-  async rejectTeamInviteActive(
-    options: V2NIMTeamJoinActionInfo
-  ): Promise<void> {
+  async rejectTeamInviteActive(options: V2NIMTeamJoinActionInfo): Promise<void> {
     try {
       this.logger?.log("rejectTeamInviteActive: ", options);
       await this.nim.teamService?.rejectInvitation(options, "");
@@ -519,19 +486,13 @@ export class TeamStore {
    * 管理员通过入群申请
    * @param options V2NIMTeamJoinActionInfo
    */
-  async acceptJoinApplicationActive(
-    options: V2NIMTeamJoinActionInfo
-  ): Promise<void> {
+  async acceptJoinApplicationActive(options: V2NIMTeamJoinActionInfo): Promise<void> {
     try {
       this.logger?.log("acceptJoinApplicationActive: ", options);
       await this.nim.teamService?.acceptJoinApplication(options);
       this.logger?.log("acceptJoinApplicationActive success", options);
     } catch (error) {
-      this.logger?.error(
-        "acceptJoinApplicationActive failed: ",
-        options,
-        error
-      );
+      this.logger?.error("acceptJoinApplicationActive failed: ", options, error);
       throw error;
     }
   }
@@ -574,12 +535,7 @@ export class TeamStore {
         role,
       } = options;
 
-      await this.nim.teamService?.updateTeamMemberRole(
-        teamId,
-        type,
-        accounts,
-        role
-      );
+      await this.nim.teamService?.updateTeamMemberRole(teamId, type, accounts, role);
       this.logger?.log("addTeamManagersActive success", options);
     } catch (error) {
       this.logger?.error("addTeamManagersActive failed: ", options, error);
@@ -593,18 +549,12 @@ export class TeamStore {
   ): Promise<V2NIMTeamJoinActionInfoResult> {
     try {
       this.logger?.log("getTeamJoinActionInfoListActive: ", options);
-      const res = await this.nim.teamService?.getTeamJoinActionInfoList(
-        options
-      );
-      this.rootStore.sysMsgStore.addTeamJoinActionMsg(res.infos);
+      const res = await this.nim.teamService?.getTeamJoinActionInfoList(options);
+      this.rootStore.sysMsgStore.addTeamJoinActionMsg(res?.infos as V2NIMTeamJoinActionInfo[]);
       this.logger?.log("getTeamJoinActionInfoListActive success", res);
-      return res;
+      return res as V2NIMTeamJoinActionInfoResult;
     } catch (error) {
-      this.logger?.error(
-        "getTeamJoinActionInfoListActive failed: ",
-        options,
-        error
-      );
+      this.logger?.error("getTeamJoinActionInfoListActive failed: ", options, error);
       throw error;
     }
   }
@@ -636,24 +586,12 @@ export class TeamStore {
   ): Promise<V2NIMTeamMessageMuteMode> {
     try {
       this.logger?.log("getTeamMessageMuteModeActive", teamId, teamType);
-      const muteMode = await this.nim.settingService?.getTeamMessageMuteMode(
-        teamId,
-        teamType
-      );
+      const muteMode = await this.nim.settingService?.getTeamMessageMuteMode(teamId, teamType);
 
-      this.logger?.log(
-        "getTeamMessageMuteModeActive success",
-        teamId,
-        teamType
-      );
-      return muteMode;
+      this.logger?.log("getTeamMessageMuteModeActive success", teamId, teamType);
+      return muteMode as V2NIMTeamMessageMuteMode;
     } catch (error) {
-      this.logger?.error(
-        "getTeamMessageMuteModeActive failed: ",
-        teamId,
-        teamType,
-        error
-      );
+      this.logger?.error("getTeamMessageMuteModeActive failed: ", teamId, teamType, error);
       throw error;
     }
   }
@@ -686,9 +624,9 @@ export class TeamStore {
     // 不用自己插入会话了，因为 SDK 会有会话创建回调
   }
 
-  private _onTeamDismissed(data: { teamId: string }) {
+  private _onTeamDismissed(data: V2NIMTeam) {
     this.logger?.log("teamService _onTeamDismissed: ", data);
-    this._handleRemoveTeam(data.teamId);
+    this._handleRemoveTeam(data.teamId as string);
   }
 
   private _onTeamInfoUpdated(data: V2NIMTeam) {
@@ -702,9 +640,9 @@ export class TeamStore {
     // 不用自己插入会话了，因为 SDK 会有会话创建回调
   }
 
-  private async _onTeamLeft(data: { teamId: string }) {
+  private async _onTeamLeft(data: V2NIMTeam) {
     this.logger?.log("teamService _onTeamLeft: ", data);
-    this._handleRemoveTeam(data.teamId);
+    this._handleRemoveTeam(data.teamId as string);
   }
 
   private _onTeamMemberInfoUpdated(data: V2NIMTeamMember[]) {
@@ -721,10 +659,7 @@ export class TeamStore {
     this.rootStore.teamMemberStore.addTeamMember(teamId as string, data);
   }
 
-  private async _onTeamMemberKicked(
-    opeartorId: string,
-    data: V2NIMTeamMember[]
-  ) {
+  private async _onTeamMemberKicked(opeartorId: string, data: V2NIMTeamMember[]) {
     this.logger?.log("teamService _onTeamMemberKicked: ", opeartorId, data);
     const teamId = data[0].teamId;
 
@@ -755,11 +690,6 @@ export class TeamStore {
     teamType: V2NIMTeamType,
     muteMode: V2NIMTeamMessageMuteMode
   ) {
-    this.logger?.log(
-      "teamService _onTeamMessageMuteModeChanged: ",
-      teamId,
-      teamType,
-      muteMode
-    );
+    this.logger?.log("teamService _onTeamMessageMuteModeChanged: ", teamId, teamType, muteMode);
   }
 }

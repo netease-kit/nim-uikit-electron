@@ -1,7 +1,8 @@
-import { makeAutoObservable } from "mobx";
+import { makeAutoObservable, reaction } from "mobx";
 import RootStore from ".";
 import { AT_ALL_ACCOUNT } from "./constant";
 import { V2NIMConst } from "../utils/constants";
+import { updateUnreadCount } from "../utils/electron";
 
 import { V2NIMClient } from "node-nim";
 import { V2NIMConversationType } from "node-nim/types/v2_def/v2_nim_enum_def";
@@ -61,6 +62,15 @@ export class LocalConversationStore {
     nim.localConversationService?.on(
       "totalUnreadCountChanged",
       this._onTotalUnreadCountChanged
+    );
+
+    // 自动同步未读消息数到主进程（托盘图标和 Dock 角标）
+    reaction(
+      () => this.totalUnreadCount,
+      (unreadCount) => {
+        this.logger?.log("LocalConversation 同步未读消息数到主进程", unreadCount);
+        updateUnreadCount(unreadCount);
+      }
     );
   }
 
@@ -441,11 +451,12 @@ export class LocalConversationStore {
         );
       }
 
-      const res: V2NIMP2PMessageReadReceipt[] = await Promise.all(
+      const res: V2NIMP2PMessageReadReceipt[] = (await Promise.all(
         conversationIds.map((item) =>
           this.nim.messageService?.getP2PMessageReceipt(item)
         )
-      );
+      )) as V2NIMP2PMessageReadReceipt[];
+
       const conversations = res
         .map((item) => {
           if (item.conversationId) {

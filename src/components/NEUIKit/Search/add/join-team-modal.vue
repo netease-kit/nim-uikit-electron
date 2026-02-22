@@ -34,16 +34,9 @@
       </div>
 
       <!-- 搜索结果 -->
-      <div
-        v-else-if="searchRes && searchRes !== 'notFind'"
-        class="search-result-content"
-      >
+      <div v-else-if="searchRes && searchRes !== 'notFind'" class="search-result-content">
         <div class="team-info">
-          <Avatar
-            size="40"
-            :avatar="searchRes.avatar"
-            :account="searchRes.teamId || ''"
-          />
+          <Avatar size="40" :avatar="searchRes.avatar" :account="searchRes.teamId || ''" />
           <div class="team-details">
             <div class="team-name">
               {{ searchRes.name || searchRes.teamId }}
@@ -71,7 +64,8 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, onMounted } from "vue";
+import { ref, onBeforeUnmount } from "vue";
+import { autorun } from "mobx";
 import Modal from "../../CommonComponents/Modal.vue";
 import Input from "../../CommonComponents/Input.vue";
 import Avatar from "../../CommonComponents/Avatar.vue";
@@ -89,7 +83,6 @@ interface Props {
   commonPrefix?: string;
 }
 
- 
 withDefaults(defineProps<Props>(), {
   visible: false,
   prefix: "search",
@@ -112,8 +105,11 @@ const searchRes = ref<V2NIMTeam | undefined | "notFind">(undefined);
 const searchResEmpty = ref(false);
 const adding = ref(false);
 
-// 计算属性
+// 是否已入群
 const inTeam = ref(false);
+
+// MobX autorun 清理函数
+let disposeAutorun: (() => void) | null = null;
 
 // 事件处理函数
 const handleChange = (event: InputEvent) => {
@@ -125,12 +121,13 @@ const handleChange = (event: InputEvent) => {
 const handleSearch = async () => {
   try {
     const team = await store?.teamStore.getTeamForceActive(searchValue.value);
-    inTeam.value = !!store?.teamStore.teams.get(searchValue.value);
 
     if (!team) {
       searchResEmpty.value = true;
     } else {
       searchRes.value = team;
+      // 搜索成功后,检查是否已入群
+      checkInTeamStatus(team.teamId || "");
     }
   } catch {
     searchRes.value = "notFind";
@@ -141,13 +138,56 @@ const handleSearch = async () => {
   }
 };
 
+// 检查是否已入群
+const checkInTeamStatus = (teamId: string) => {
+  if (!teamId) return;
+
+  const conversationId = store?.nim.conversationIdUtil?.teamConversationId(teamId) || "";
+  const hasConversation = store?.sdkOptions?.enableCloudConversation
+    ? store?.conversationStore?.conversations.has(conversationId)
+    : store?.localConversationStore?.conversations.has(conversationId);
+
+  const hasTeam = store?.teamStore.teams.has(teamId);
+
+  inTeam.value = !!hasConversation || !!hasTeam;
+};
+
+// 设置会话监听
+const setupConversationWatch = (teamId: string) => {
+  // 清除之前的 autorun
+  if (disposeAutorun) {
+    disposeAutorun();
+  }
+
+  // 使用 MobX autorun 监听会话列表变化
+  disposeAutorun = autorun(() => {
+    const conversationId = store?.nim.conversationIdUtil?.teamConversationId(teamId) || "";
+    const conversationStore = store?.sdkOptions?.enableCloudConversation
+      ? store?.conversationStore
+      : store?.localConversationStore;
+
+    // 检查会话是否存在
+    const hasConversation = conversationStore?.conversations.has(conversationId);
+
+    // 检查是否在群组列表中
+    const hasTeam = store?.teamStore.teams.has(teamId);
+
+    // 更新 inTeam 状态
+    if (hasConversation || hasTeam) {
+      inTeam.value = true;
+      // 检测到入群后,清除监听
+      if (disposeAutorun) {
+        disposeAutorun();
+        disposeAutorun = null;
+      }
+    }
+  });
+};
+
 const handleAdd = async () => {
   try {
     if (searchRes.value && searchRes.value !== "notFind") {
-      if (
-        searchRes.value.teamType ===
-        V2NIMConst.V2NIMTeamType.V2NIM_TEAM_TYPE_INVALID
-      ) {
+      if (searchRes.value.teamType === V2NIMConst.V2NIMTeamType.V2NIM_TEAM_TYPE_INVALID) {
         showToast({
           message: t("notSupportJoinText"),
           type: "error",
@@ -156,13 +196,28 @@ const handleAdd = async () => {
       }
 
       adding.value = true;
-      await store?.teamStore.applyTeamActive(searchRes.value.teamId || "");
-      // 加入成功后显示成功提示
-      showToast({
-        message: t("joinTeamSuccessText"),
-        type: "success",
-      });
-      inTeam.value = true;
+      const teamId = searchRes.value.teamId || "";
+      await store?.teamStore.applyTeamActive(teamId);
+
+      // 根据joinMode判断显示的提示文案和按钮状态
+      // V2NIM_TEAM_JOIN_MODE_FREE = 0 自由加入，无须验证
+      // V2NIM_TEAM_JOIN_MODE_APPLY = 1 需申请，群主或管理同意后加入
+      const joinMode = searchRes.value.joinMode;
+      if (joinMode === V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_APPLY) {
+        // 需要审核:显示"申请已发送"
+        showToast({
+          message: t("joinTeamApplySentText"),
+          type: "success",
+        });
+      } else {
+        // 无需审核:显示"加入成功"
+        showToast({
+          message: t("joinTeamSuccessText"),
+          type: "success",
+        });
+      }
+      // 设置会话监听,通过监听会话列表变化来判断是否真正入群
+      setupConversationWatch(teamId);
     }
 
     adding.value = false;
@@ -203,6 +258,11 @@ const handleChat = async () => {
 };
 
 const handleClose = () => {
+  // 清除 MobX autorun
+  if (disposeAutorun) {
+    disposeAutorun();
+    disposeAutorun = null;
+  }
   emit("close");
 };
 
@@ -210,9 +270,11 @@ const handleUpdateVisible = (value: boolean) => {
   emit("update:visible", value);
 };
 
-onMounted(() => {
-  if (searchRes.value !== "notFind") {
-    inTeam.value = !!store?.teamStore.teams.has(searchRes.value?.teamId || "");
+onBeforeUnmount(() => {
+  // 组件销毁时清除 MobX autorun
+  if (disposeAutorun) {
+    disposeAutorun();
+    disposeAutorun = null;
   }
 });
 </script>

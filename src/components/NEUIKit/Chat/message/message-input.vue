@@ -5,8 +5,7 @@
       trigger="manual"
       placement="top"
       :disabled="
-        props.conversationType !==
-        V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+        props.conversationType !== V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
       "
       :align="'left'"
       :offset="30"
@@ -36,28 +35,21 @@
             />
           </div>
           <div class="reply-to-colon">:</div>
-          <div
-            v-if="replyMsg && replyMsg.messageClientId === 'noFind'"
-            class="reply-noFind"
-          >
+          <div v-if="replyMsg && replyMsg.messageClientId === 'noFind'" class="reply-noFind">
             {{ t("replyNotFindText") }}
           </div>
           <div class="reply-message" v-else>
             <MessageOneLine
               v-if="
                 replyMsg &&
-                replyMsg.messageType ===
-                  V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
+                replyMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
               "
               :text="replyMsg.text"
             />
             <div v-else>
               {{
                 replyMsg?.messageType
-                  ? `[${
-                      REPLY_MSG_TYPE_MAP[replyMsg.messageType] ||
-                      t("unknownMsgText")
-                    }]`
+                  ? `[${REPLY_MSG_TYPE_MAP[replyMsg.messageType] || t("unknownMsgText")}]`
                   : "[Unknown]"
               }}
             </div>
@@ -80,6 +72,7 @@
             @blur="handleInputBlur"
             @focus="handleInputFocus"
             @input="handleInputChange"
+            @paste="handlePaste"
           >
           </Textarea>
 
@@ -112,31 +105,11 @@
                 <Icon :size="20" type="icon-tupian" />
                 <template #content>
                   <div class="img-popover-menu">
-                    <div
-                      class="img-popover-item"
-                      @click="() => handleImgActionItemClick('img')"
-                    >
-                      <input
-                        type="file"
-                        ref="imageInput"
-                        accept="image/*"
-                        class="file-input-overlay"
-                        @change="onImageSelected"
-                      />
+                    <div class="img-popover-item" @click="() => handleImgActionItemClick('img')">
                       <Icon type="icon-tupian" :size="15"></Icon>
                       <span class="action-name">{{ t("imgText") }}</span>
                     </div>
-                    <div
-                      class="img-popover-item"
-                      @click="() => handleImgActionItemClick('video')"
-                    >
-                      <input
-                        type="file"
-                        ref="videoInput"
-                        accept="video/*"
-                        class="file-input-overlay"
-                        @change="onVideoSelected"
-                      />
+                    <div class="img-popover-item" @click="() => handleImgActionItemClick('video')">
                       <Icon type="icon-shipin8" :size="15"></Icon>
                       <span class="action-name">{{ t("videoText") }}</span>
                     </div>
@@ -145,27 +118,11 @@
               </Popover>
             </div>
             <div class="input-icon">
-              <input
-                type="file"
-                ref="fileInput"
-                accept="*"
-                class="file-input-overlay"
-                @change="onFileSelected"
-              />
               <Icon @click="handleSendFileMsg" :size="19" type="icon-file" />
             </div>
             <div class="input-icon">
-              <Icon
-                v-if="!inputText.length"
-                :size="20"
-                type="icon-send-default"
-              />
-              <Icon
-                v-else
-                @click="handleSendTextMsg"
-                :size="20"
-                type="icon-send-selected"
-              />
+              <Icon v-if="!inputText.length" :size="20" type="icon-send-default" />
+              <Icon v-else @click="handleSendTextMsg" :size="20" type="icon-send-selected" />
             </div>
           </div>
         </div>
@@ -188,13 +145,8 @@
 import Face from "./face.vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import { ref, computed, onUnmounted, onMounted, nextTick, watch } from "vue";
-import {
-  ALLOW_AT,
-  events,
-  REPLY_MSG_TYPE_MAP,
-  AT_ALL_ACCOUNT,
-} from "../../utils/constants";
-
+import { ALLOW_AT, events, REPLY_MSG_TYPE_MAP, AT_ALL_ACCOUNT } from "../../utils/constants";
+import { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { t } from "../../utils/i18n";
 import MessageOneLine from "../../CommonComponents/MessageOneLine.vue";
 import Appellation from "../../CommonComponents/Appellation.vue";
@@ -206,19 +158,12 @@ import emitter from "../../utils/eventBus";
 //@ts-ignore
 import Popover from "../../CommonComponents/Popover.vue";
 import MentionChooseList from "./mention-choose-list.vue";
-import type {
-  V2NIMTeam,
-  V2NIMTeamMember,
-} from "node-nim/types/v2_def/v2_nim_struct_def";
+import type { V2NIMTeam, V2NIMTeamMember } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { V2NIMTeamChatBannedMode, V2NIMConversationType } from "node-nim";
-import type {
-  V2NIMMessageForUI,
-  YxServerExt,
-  YxAitMsg,
-} from "../../store/types";
+import type { V2NIMMessageForUI, YxServerExt, YxAitMsg } from "../../store/types";
 import Textarea from "../../CommonComponents/Textarea.vue";
 import { getContextState } from "../../utils/init";
-import { getImageDimensions, getVideoMetadata } from "../../utils";
+import { handleJumpStateBeforeSend } from "../../utils/jump-state";
 const { store, nim } = getContextState();
 
 const props = withDefaults(
@@ -270,13 +215,6 @@ const inputWrapperRef = ref();
 const cursorPosition = ref(0); // 记录光标位置
 const atPosition = ref(0); // 记录@符号的位置
 
-// 发送图片消息 触发图片选择
-const imageInput = ref<HTMLInputElement | null>(null);
-// 发送视频消息 触发视频选择
-const videoInput = ref<HTMLInputElement | null>(null);
-// 发送文件消息 触发文件选择
-const fileInput = ref<HTMLInputElement | null>(null);
-
 /** 是否允许@ 所有人 */
 const allowAtAll = computed(() => {
   let ext: YxServerExt = {};
@@ -299,10 +237,7 @@ const updateTeamMute = (teamMute: V2NIMTeamChatBannedMode) => {
     return;
   }
 
-  if (
-    teamMute ===
-    V2NIMConst.V2NIMTeamChatBannedMode.V2NIM_TEAM_CHAT_BANNED_MODE_NONE
-  ) {
+  if (teamMute === V2NIMConst.V2NIMTeamChatBannedMode.V2NIM_TEAM_CHAT_BANNED_MODE_NONE) {
     isTeamMute.value = false;
     return;
   }
@@ -312,13 +247,13 @@ const updateTeamMute = (teamMute: V2NIMTeamChatBannedMode) => {
   return;
 };
 
-// 发送图片和视频消息
-const handleImgActionItemClick = (key: string) => {
+// 发送图片和视频消息（通过 IPC 调用主进程对话框）
+const handleImgActionItemClick = async (key: string) => {
   if (isTeamMute.value) return;
   if (key === "img") {
-    imageInput.value?.click();
+    await handleChooseImage();
   } else if (key === "video") {
-    videoInput.value?.click();
+    await handleChooseVideo();
   }
 };
 
@@ -350,8 +285,7 @@ const handleInputChange = (event: InputEvent) => {
   // 当前输入的是@ 展示群成员列表
   if (
     event.data === "@" &&
-    props.conversationType ===
-      V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+    props.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
   ) {
     atPosition.value = cursorPosition.value - 1; // 记录@符号的位置
     mentionPopoverVisible.value = true;
@@ -361,15 +295,10 @@ const handleInputChange = (event: InputEvent) => {
 };
 
 // 处理mention选择
-const handleMentionSelect = (member: {
-  accountId: string;
-  appellation: string;
-}) => {
+const handleMentionSelect = (member: { accountId: string; appellation: string }) => {
   const nickInTeam = member.appellation;
   selectedAtMembers.value = [
-    ...selectedAtMembers.value.filter(
-      (item) => item.accountId !== member.accountId
-    ),
+    ...selectedAtMembers.value.filter((item) => item.accountId !== member.accountId),
     member,
   ];
 
@@ -388,10 +317,7 @@ const handleMentionSelect = (member: {
   nextTick(() => {
     if (msgInputRef.value && msgInputRef.value.textareaRef) {
       const newCursorPos = atPosition.value + nickInTeam.length + 2; // @xxx + 空格
-      msgInputRef.value.textareaRef.setSelectionRange(
-        newCursorPos,
-        newCursorPos
-      );
+      msgInputRef.value.textareaRef.setSelectionRange(newCursorPos, newCursorPos);
       msgInputRef.value.focus();
     }
   });
@@ -473,11 +399,15 @@ const onAtMembersExtHandler = () => {
 };
 
 // 发送文本消息
-const handleSendTextMsg = () => {
+const handleSendTextMsg = async () => {
   if (inputText.value.trim() === "") return;
   if (isTeamMute.value) return;
+
+  // 处理跳转状态
+  await handleJumpStateBeforeSend(props.conversationId, "发送文本消息");
+
   let text = replaceEmoji(inputText.value);
-  const textMsg = nim?.messageCreator?.createTextMessage(text);
+  const textMsg = nim?.messageCreator?.createTextMessage(text) as V2NIMMessage;
   const ext = onAtMembersExtHandler();
   isReplyMsg.value = false;
   store?.msgStore
@@ -522,8 +452,7 @@ const handleEmoji = (emoji: { key: string; type: string }) => {
 
   // 如果能获取到实时光标位置，使用实时位置
   if (msgInputRef.value && msgInputRef.value.textareaRef) {
-    currentCursorPos =
-      msgInputRef.value.textareaRef.selectionStart || cursorPosition.value;
+    currentCursorPos = msgInputRef.value.textareaRef.selectionStart || cursorPosition.value;
   }
 
   // 在光标位置插入表情
@@ -542,10 +471,7 @@ const handleEmoji = (emoji: { key: string; type: string }) => {
   nextTick(() => {
     if (msgInputRef.value && msgInputRef.value.textareaRef) {
       const newCursorPos = currentCursorPos + emoji.key.length;
-      msgInputRef.value.textareaRef.setSelectionRange(
-        newCursorPos,
-        newCursorPos
-      );
+      msgInputRef.value.textareaRef.setSelectionRange(newCursorPos, newCursorPos);
       msgInputRef.value.focus();
       // 更新记录的光标位置
       cursorPosition.value = newCursorPos;
@@ -553,96 +479,46 @@ const handleEmoji = (emoji: { key: string; type: string }) => {
   });
 };
 
-// 发送文件消息
-const handleSendFileMsg = () => {
+// 发送文件消息（通过 IPC 调用主进程对话框）
+const handleSendFileMsg = async () => {
   if (isTeamMute.value) return;
-  fileInput.value?.click();
+  await handleChooseFile();
 };
 
-// 检查文件大小，如果超过100MB则提示并返回false
-const checkFileSize = (file: File): boolean => {
-  const maxSize = 100 * 1024 * 1024; // 100MB
-  if (file.size > maxSize) {
+// 检查文件大小（基于文件信息），如果超过限制则提示并返回false
+const checkFileSizeByInfo = (size: number, maxSize: number = 100 * 1024 * 1024): boolean => {
+  if (size > maxSize) {
     toast.error(t("uploadLimitText"));
-    // 清空 input 的值
-    if (fileInput.value) {
-      fileInput.value.value = "";
-    }
-    return false; // 文件过大，返回false
+    return false;
   }
-  return true; // 文件大小合适，返回true
+  return true;
 };
 
-// 发送图片消息使用 获取图片数据
-const getImgDataUrl = (file: Blob): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-
-    reader.onload = (e) => {
-      resolve(e.target?.result as string);
-    };
-
-    reader.onerror = (e) => {
-      reject(e);
-    };
-
-    reader.readAsDataURL(file);
-  });
-};
-
-// 获取视频第一帧图片
-const getVideoFirstFrameDataUrl = (videoFile: File): Promise<string> => {
-  return new Promise((resolve, reject) => {
-    const video = document.createElement("video");
-    const canvas = document.createElement("canvas");
-    const context = canvas.getContext("2d");
-
-    video.onloadeddata = () => {
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      context?.drawImage(video, 0, 0, canvas.width, canvas.height);
-      const dataURL = canvas.toDataURL("image/jpeg");
-
-      resolve(dataURL);
-    };
-
-    video.onerror = () => {
-      reject(new Error("Failed to load the video"));
-    };
-
-    const url = URL.createObjectURL(videoFile);
-
-    video.preload = "auto";
-    video.autoplay = true;
-    video.muted = true;
-    video.src = url;
-  });
-};
-
-// 文件选择
-const onFileSelected = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file) return;
-
-  // 检查文件大小，如果返回false则中断执行
-  const isFileSizeValid = checkFileSize(file);
-  if (!isFileSizeValid) {
-    return;
-  }
-
+// 通过 IPC 选择文件并发送文件消息
+const handleChooseFile = async () => {
   try {
-    const path = file.path;
-    const name = file.name;
+    // 处理跳转状态
+    await handleJumpStateBeforeSend(props.conversationId, "选择文件消息");
+
+    const result = await window.electronAPI.fs.chooseFile({
+      type: "file",
+      title: t("selectFileText"),
+    });
+
+    if (!result) return; // 用户取消选择
+
+    const { file } = result;
+
+    // 检查文件大小
+    if (!checkFileSizeByInfo(file.size)) {
+      return;
+    }
+
     const sceneName = "nim_default_im";
-    const fileMsg = nim?.messageCreator?.createFileMessage(
-      path,
-      name,
-      sceneName
-    );
+    const fileMsg = nim?.messageCreator?.createFileMessage(file.url, file.name, sceneName);
 
     await store?.msgStore.sendMessageActive({
-      msg: fileMsg,
+      msg: fileMsg as V2NIMMessage,
       conversationId: props.conversationId,
       progress: () => true,
       sendBefore: () => {
@@ -654,47 +530,53 @@ const onFileSelected = async (event: Event) => {
   } catch (err: any) {
     scrollBottom();
     handleSendMsgError(err?.code);
-  } finally {
-    // 清空 input 的值，这样用户可以重复选择同一个文件
-    if (fileInput.value) {
-      fileInput.value.value = "";
-    }
   }
 };
 
-// 视频选择
-const onVideoSelected = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-  if (!file) return;
-  // 检查文件大小，如果返回false则中断执行
-  const isFileSizeValid = checkFileSize(file);
-  if (!isFileSizeValid) {
-    return;
-  }
-  const previewImg = await getVideoFirstFrameDataUrl(file);
-
-  const videoPath = file.path;
-  const name = file.name;
-  const sceneName = "nim_default_im";
-  const videoInfo = await getVideoMetadata(file);
-  const height = videoInfo.height;
-  const width = videoInfo.width;
-
+// 通过 IPC 选择视频并发送视频消息
+const handleChooseVideo = async () => {
   try {
-    const fileMsg = nim?.messageCreator?.createVideoMessage(
-      videoPath,
-      name,
+    // 处理跳转状态
+    await handleJumpStateBeforeSend(props.conversationId, "选择视频消息");
+
+    const result = await window.electronAPI.fs.chooseFile({
+      type: "video",
+      title: t("selectVideoText"),
+    });
+
+    if (!result) return; // 用户取消选择
+
+    const { file } = result;
+
+    // 检查文件大小
+    if (!checkFileSizeByInfo(file.size)) {
+      return;
+    }
+
+    const sceneName = "nim_default_im";
+
+    // 使用主进程返回的视频元数据（时长、宽高、首帧预览图）
+    const duration = file.duration || 0;
+    const width = file.width || 0;
+    const height = file.height || 0;
+    const previewImg = file.base64 || "";
+
+    // 创建视频消息
+    const videoMsg = nim?.messageCreator?.createVideoMessage(
+      file.url,
+      file.name,
       sceneName,
-      0,
+      duration,
       height,
       width
     );
 
     await store?.msgStore.sendMessageActive({
-      msg: fileMsg,
+      msg: videoMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg,
+      previewWidth: width,
+      previewHeight: height,
       progress: () => true,
       sendBefore: () => {
         scrollBottom();
@@ -702,88 +584,65 @@ const onVideoSelected = async (event: Event) => {
     });
 
     scrollBottom();
-  } catch {
+  } catch (err: any) {
     scrollBottom();
     toast.info(t("sendVideoFailedText"));
-  } finally {
-    // 清空 input 的值，这样用户可以重复选择同一个文件
-    if (Array.isArray(videoInput.value)) {
-      videoInput.value[0].value = "";
-    } else if (videoInput.value) {
-      videoInput.value.value = "";
-    }
   }
 };
 
-// 图片选择
-const onImageSelected = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-
-  if (!file) return;
-
-  if (!file.type.startsWith("image/")) {
-    toast.info(t("selectImageText"));
-    return;
-  }
-
-  const imagePath = file.path;
-  const name = file.name;
-  const sceneName = "nim_default_im";
-  const maxImageSize = 20 * 1024 * 1024;
-
-  // 超过20M的图片，在渲染时 nos 不支持获取缩略图， 故发送文件消息
-  if (file.size > maxImageSize) {
-    try {
-      const fileMsg = nim?.messageCreator?.createFileMessage(
-        imagePath,
-        name,
-        sceneName
-      );
-
-      await store?.msgStore.sendMessageActive({
-        msg: fileMsg,
-        conversationId: props.conversationId,
-        progress: () => true,
-        sendBefore: () => {
-          scrollBottom();
-        },
-      });
-
-      scrollBottom();
-    } catch (err: any) {
-      handleSendMsgError(err?.code);
-    } finally {
-      if (Array.isArray(imageInput.value)) {
-        imageInput.value[0].value = "";
-      } else if (imageInput.value) {
-        imageInput.value.value = "";
-      }
-      scrollBottom();
-    }
-    return;
-  }
-
-  const imageInfo: {
-    width: number;
-    height: number;
-  } = await getImageDimensions(file);
-
-  const height = imageInfo.height;
-  const width = imageInfo.width;
-
+// 通过 IPC 选择图片并发送图片消息
+const handleChooseImage = async () => {
   try {
-    const previewImg = await getImgDataUrl(file);
+    // 处理跳转状态
+    await handleJumpStateBeforeSend();
+
+    const result = await window.electronAPI.fs.chooseFile({
+      type: "image",
+      title: t("selectImageText"),
+    });
+
+    if (!result) return; // 用户取消选择
+
+    const { file } = result;
+    const sceneName = "nim_default_im";
+    const maxImageSize = 20 * 1024 * 1024;
+
+    // 超过20M的图片，在渲染时 nos 不支持获取缩略图，故发送文件消息
+    if (file.size > maxImageSize) {
+      try {
+        const fileMsg = nim?.messageCreator?.createFileMessage(file.url, file.name, sceneName);
+
+        await store?.msgStore.sendMessageActive({
+          msg: fileMsg as V2NIMMessage,
+          conversationId: props.conversationId,
+          progress: () => true,
+          sendBefore: () => {
+            scrollBottom();
+          },
+        });
+
+        scrollBottom();
+      } catch (err: any) {
+        handleSendMsgError(err?.code);
+      }
+      return;
+    }
+
+    // 使用主进程返回的图片尺寸和 base64
+    const width = file.width || 0;
+    const height = file.height || 0;
+    const previewImg = file.base64 || "";
+
     const imgMsg = nim?.messageCreator?.createImageMessage(
-      imagePath,
-      name,
+      file.url,
+      file.name,
       sceneName,
       width,
       height
     );
 
     await store?.msgStore.sendMessageActive({
-      msg: imgMsg,
+      msg: imgMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg,
       progress: () => true,
@@ -792,19 +651,179 @@ const onImageSelected = async (event: Event) => {
       },
     });
 
-    // 消息发送成功后再次滚动到底部
     scrollBottom();
   } catch (err: any) {
-    handleSendMsgError(err?.code);
-  } finally {
-    // 清空 input 的值，这样用户可以重复选择同一个文件
-    if (Array.isArray(imageInput.value)) {
-      imageInput.value[0].value = "";
-    } else if (imageInput.value) {
-      imageInput.value.value = "";
-    }
     scrollBottom();
+    handleSendMsgError(err?.code);
   }
+};
+
+// 处理粘贴事件
+const handlePaste = async (event: ClipboardEvent) => {
+  // 群禁言状态不处理
+  if (isTeamMute.value) return;
+
+  const clipboardData = event.clipboardData;
+  if (!clipboardData) return;
+
+  // 优先检查 files
+  if (clipboardData.files.length > 0) {
+    event.preventDefault();
+    await handlePasteFile(clipboardData.files[0]);
+    return;
+  }
+
+  // 兜底: 从 items 获取图片（处理从浏览器复制图片的情况）
+  const items = clipboardData.items;
+  for (let i = 0; i < items.length; i++) {
+    const item = items[i];
+    if (item.type.startsWith("image/")) {
+      const blob = item.getAsFile();
+      if (blob) {
+        event.preventDefault();
+        await handlePasteFile(blob);
+        return;
+      }
+    }
+  }
+
+  // 无文件，使用默认粘贴文本行为
+};
+
+// 处理粘贴的文件
+const handlePasteFile = async (file: File) => {
+  try {
+    // 读取文件为 ArrayBuffer
+    const buffer = await file.arrayBuffer();
+    const bufferArray = Array.from(new Uint8Array(buffer));
+
+    // 调用主进程保存剪贴板文件到临时目录
+    const result = await window.electronAPI.fs.saveClipboardFile({
+      buffer: bufferArray,
+      mimeType: file.type,
+      fileName: file.name || undefined,
+    });
+
+    if (!result) {
+      toast.error(t("pasteFileFailedText"));
+      return;
+    }
+
+    // 根据文件类型调用对应的发送逻辑
+    const { type, file: fileInfo } = result;
+
+    if (type === "image") {
+      await sendImageMessage(fileInfo);
+    } else if (type === "video") {
+      await sendVideoMessage(fileInfo);
+    } else {
+      await sendFileMessage(fileInfo);
+    }
+  } catch (err: any) {
+    toast.error(t("pasteFileFailedText"));
+  }
+};
+
+// 发送图片消息（抽取的公共逻辑）
+const sendImageMessage = async (fileInfo: {
+  url: string;
+  name: string;
+  size: number;
+  width?: number;
+  height?: number;
+  base64?: string;
+}) => {
+  // 处理跳转状态
+  await handleJumpStateBeforeSend(props.conversationId, "选择图片消息");
+
+  const sceneName = "nim_default_im";
+  const maxImageSize = 20 * 1024 * 1024;
+
+  // 超过 20MB 作为文件发送
+  if (fileInfo.size > maxImageSize) {
+    await sendFileMessage(fileInfo);
+    return;
+  }
+
+  const imgMsg = nim?.messageCreator?.createImageMessage(
+    fileInfo.url,
+    fileInfo.name,
+    sceneName,
+    fileInfo.width || 0,
+    fileInfo.height || 0
+  );
+
+  await store?.msgStore.sendMessageActive({
+    msg: imgMsg as V2NIMMessage,
+    conversationId: props.conversationId,
+    previewImg: fileInfo.base64,
+    progress: () => true,
+    sendBefore: () => scrollBottom(),
+  });
+
+  scrollBottom();
+};
+
+// 发送视频消息（抽取的公共逻辑）
+const sendVideoMessage = async (fileInfo: {
+  url: string;
+  name: string;
+  size: number;
+  width?: number;
+  height?: number;
+  duration?: number;
+  base64?: string;
+}) => {
+  // 处理跳转状态
+  await handleJumpStateBeforeSend(props.conversationId, "粘贴视频消息");
+
+  // 检查文件大小
+  if (!checkFileSizeByInfo(fileInfo.size)) return;
+
+  const sceneName = "nim_default_im";
+
+  const videoMsg = nim?.messageCreator?.createVideoMessage(
+    fileInfo.url,
+    fileInfo.name,
+    sceneName,
+    fileInfo.duration || 0,
+    fileInfo.height || 0,
+    fileInfo.width || 0
+  );
+
+  await store?.msgStore.sendMessageActive({
+    msg: videoMsg as V2NIMMessage,
+    conversationId: props.conversationId,
+    previewImg: fileInfo.base64,
+    previewWidth: fileInfo.width,
+    previewHeight: fileInfo.height,
+    progress: () => true,
+    sendBefore: () => scrollBottom(),
+  });
+
+  scrollBottom();
+};
+
+// 发送文件消息（抽取的公共逻辑）
+const sendFileMessage = async (fileInfo: { url: string; name: string; size: number }) => {
+  // 处理跳转状态
+  await handleJumpStateBeforeSend(props.conversationId, "粘贴文件消息");
+
+  // 检查文件大小
+  if (!checkFileSizeByInfo(fileInfo.size)) return;
+
+  const sceneName = "nim_default_im";
+
+  const fileMsg = nim?.messageCreator?.createFileMessage(fileInfo.url, fileInfo.name, sceneName);
+
+  await store?.msgStore.sendMessageActive({
+    msg: fileMsg as V2NIMMessage,
+    conversationId: props.conversationId,
+    progress: () => true,
+    sendBefore: () => scrollBottom(),
+  });
+
+  scrollBottom();
 };
 
 let teamWatch = () => {};
@@ -826,28 +845,20 @@ watch(
 
       teamWatch = autorun(() => {
         if (
-          props.conversationType ===
-          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+          props.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
         ) {
-          const _team: V2NIMTeam = store?.teamStore.teams.get(
-            props.to
-          ) as V2NIMTeam;
+          const _team: V2NIMTeam = store?.teamStore.teams.get(props.to) as V2NIMTeam;
 
-          teamMembers.value = store?.teamMemberStore.getTeamMember(
-            props.to
-          ) as V2NIMTeamMember[];
+          teamMembers.value = store?.teamMemberStore.getTeamMember(props.to) as V2NIMTeamMember[];
 
           const myUser = store?.userStore.myUserInfo;
           isTeamOwner.value = _team?.ownerAccountId == myUser?.accountId;
           isTeamManager.value = teamMembers.value
             .filter(
               (item) =>
-                item.memberRole ===
-                V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
+                item.memberRole === V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
             )
-            .some(
-              (member) => member.accountId === (myUser ? myUser.accountId : "")
-            );
+            .some((member) => member.accountId === (myUser ? myUser.accountId : ""));
           team.value = _team;
 
           updateTeamMute(_team?.chatBannedMode as V2NIMTeamChatBannedMode);
@@ -898,13 +909,10 @@ onMounted(() => {
   emitter.on(events.AIT_TEAM_MEMBER, (member) => {
     const beReplyMember = member as { accountId: string; appellation: string };
     selectedAtMembers.value = [
-      ...selectedAtMembers.value.filter(
-        (item) => item.accountId !== beReplyMember.accountId
-      ),
+      ...selectedAtMembers.value.filter((item) => item.accountId !== beReplyMember.accountId),
       beReplyMember,
     ];
-    const newInputText =
-      inputText.value + "@" + beReplyMember.appellation + " ";
+    const newInputText = inputText.value + "@" + beReplyMember.appellation + " ";
     /** 更新input框的内容 */
     inputText.value = newInputText;
   });

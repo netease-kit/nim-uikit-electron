@@ -3,7 +3,7 @@
     <div class="team-set-card" v-if="team">
       <div class="team-info-item" @click="handleInfoClick">
         <Avatar
-          :account="team && team.teamId as string"
+          :account="team && (team.teamId as string)"
           :avatar="team && team.avatar"
           size="36"
         />
@@ -18,9 +18,7 @@
         <div class="team-members-info-item" @click="gotoTeamMember">
           <div class="team-info-title team-info-title-label">
             {{ isDiscussion ? t("discussionMemberText") : t("teamMemberText") }}
-            <div class="team-info-subtitle">
-              （{{ team && team.memberCount }}）
-            </div>
+            <div class="team-info-subtitle">（{{ team && team.memberCount }}）</div>
           </div>
           <Icon iconClassName="more-icon" color="#999" type="icon-jiantou" />
         </div>
@@ -32,7 +30,7 @@
           </div>
           <div
             class="member-item"
-            v-for="member in teamMembers"
+            v-for="member in teamMembers.slice(0, 10)"
             :key="member.accountId"
           >
             <Avatar
@@ -67,29 +65,22 @@
     <div class="team-set-card">
       <div class="team-set-item-flex" v-if="!isDiscussion">
         <div class="team-set-item-label">{{ t("stickTopText") }}</div>
-        <Switch
-          :checked="!!conversation?.stickTop"
-          @change="changeStickTopInfo"
-        />
+        <Switch :checked="!!conversation?.stickTop" @change="changeStickTopInfo" />
       </div>
       <div class="team-set-item-flex">
         <div class="team-set-item-label">
-          {{
-            isDiscussion
-              ? t("discussionDoNotDisturbText")
-              : t("teamDoNotDisturbText")
-          }}
+          {{ isDiscussion ? t("discussionDoNotDisturbText") : t("teamDoNotDisturbText") }}
         </div>
         <Switch
           :checked="
-            teamMuteMode ==
-            V2NIMConst.V2NIMTeamMessageMuteMode.V2NIM_TEAM_MESSAGE_MUTE_MODE_ON
+            teamMuteMode == V2NIMConst.V2NIMTeamMessageMuteMode.V2NIM_TEAM_MESSAGE_MUTE_MODE_ON
           "
           @change="changeTeamMute"
         />
       </div>
     </div>
 
+    <!-- 转让群主(仅群主可见,且非讨论组) -->
     <div
       v-if="(isTeamOwner && !isDiscussion) || (isTeamManager && !isDiscussion)"
       class="team-set-card"
@@ -101,15 +92,24 @@
       </div>
     </div>
 
-    <div v-if="isTeamOwner" class="team-set-button" @click="showDismissConfirm">
-      {{ isDiscussion ? t("leaveDiscussionTitle") : t("dismissTeamText") }}
+    <!-- 底部按钮区域 -->
+    <div v-if="isTeamOwner && !isDiscussion" class="team-action-buttons">
+      <div class="team-set-button team-transfer-button" @click="transferOwnerModalVisible = true">
+        {{ t("transformTeam") }}
+      </div>
+      <div class="team-set-button team-dismiss-button" @click="showDismissConfirm">
+        {{ t("dismissTeamText") }}
+      </div>
     </div>
-    <div
-      v-else
-      class="team-set-button team-leave-button"
-      @click="showLeaveConfirm"
-    >
-      {{ isDiscussion ? t("leaveDiscussionTitle") : t("leaveTeamTitle") }}
+    <div v-else-if="isTeamOwner && isDiscussion" class="team-action-buttons">
+      <div class="team-set-button team-dismiss-button" @click="showDismissConfirm">
+        {{ t("leaveDiscussionTitle") }}
+      </div>
+    </div>
+    <div v-else class="team-action-buttons">
+      <div class="team-set-button team-leave-button" @click="showLeaveConfirm">
+        {{ isDiscussion ? t("leaveDiscussionTitle") : t("leaveTeamTitle") }}
+      </div>
     </div>
   </div>
   <AddTeamMemberModal
@@ -123,6 +123,13 @@
       }
     "
   />
+  <TransferTeamOwnerModal
+    v-if="transferOwnerModalVisible"
+    :visible="transferOwnerModalVisible"
+    :teamId="props.teamId"
+    @close="transferOwnerModalVisible = false"
+    @update:visible="(v) => (transferOwnerModalVisible = v)"
+  />
 </template>
 
 <script lang="ts" setup>
@@ -132,17 +139,12 @@ import Icon from "../../../CommonComponents/Icon.vue";
 import { ref, computed } from "vue";
 import { t } from "../../../utils/i18n";
 import { V2NIMConst } from "../../../utils/constants";
-import type {
-  V2NIMTeam,
-  V2NIMTeamMember,
-} from "node-nim/types/v2_def/v2_nim_struct_def";
-import type {
-  V2NIMConversationForUI,
-  V2NIMLocalConversationForUI,
-} from "../../../store/types";
+import type { V2NIMTeam, V2NIMTeamMember } from "node-nim/types/v2_def/v2_nim_struct_def";
+import type { V2NIMConversationForUI, V2NIMLocalConversationForUI } from "../../../store/types";
 import Switch from "../../../CommonComponents/Switch.vue";
 import Input from "../../../CommonComponents/Input.vue";
 import AddTeamMemberModal from "./add-team-member-modal.vue";
+import TransferTeamOwnerModal from "./transfer-team-owner-modal.vue";
 import { modal } from "../../../utils/modal";
 import { toast } from "../../../utils/toast";
 import { getContextState } from "../../../utils/init";
@@ -157,10 +159,7 @@ interface Props {
   teamMembers: V2NIMTeamMember[];
   nickInTeam: string;
   isDiscussion: boolean;
-  conversation:
-    | V2NIMConversationForUI
-    | V2NIMLocalConversationForUI
-    | undefined;
+  conversation: V2NIMConversationForUI | V2NIMLocalConversationForUI | undefined;
 }
 
 const props = defineProps<Props>();
@@ -177,16 +176,15 @@ const { store, nim } = getContextState();
 
 // 添加群成员
 const addModalVisible = ref(false);
+// 转让群主弹窗
+const transferOwnerModalVisible = ref(false);
 
 //是否是云端会话
 const enableCloudConversation = store?.localOptions.enableCloudConversation;
 
 // 是否可以添加群成员
 const enableAddMember = computed(() => {
-  if (
-    props.team?.inviteMode ===
-    V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_ALL
-  ) {
+  if (props.team?.inviteMode === V2NIMConst.V2NIMTeamInviteMode.V2NIM_TEAM_INVITE_MODE_ALL) {
     return true;
   }
   return props.isTeamOwner || props.isTeamManager;
@@ -275,12 +273,9 @@ const showLeaveDiscussionConfirm = () => {
           const myUser = store?.userStore.myUserInfo;
           const teamMembersWithoutAiUserAndMySelf = props.teamMembers
             .filter(
-              (item: V2NIMTeamMember) =>
-                !store?.aiUserStore.aiUsers.has(item.accountId as string)
+              (item: V2NIMTeamMember) => !store?.aiUserStore.aiUsers.has(item.accountId as string)
             )
-            .filter(
-              (item: V2NIMTeamMember) => item.accountId !== myUser?.accountId
-            );
+            .filter((item: V2NIMTeamMember) => item.accountId !== myUser?.accountId);
 
           if (teamMembersWithoutAiUserAndMySelf.length === 0) {
             await store?.teamStore.dismissTeamActive(props.teamId);
@@ -306,24 +301,15 @@ const showLeaveDiscussionConfirm = () => {
 // 群会话置顶
 const changeStickTopInfo = async (value: boolean) => {
   const checked = value;
-  const conversationId =
-    nim?.conversationIdUtil?.teamConversationId(props.teamId) || "";
+  const conversationId = nim?.conversationIdUtil?.teamConversationId(props.teamId) || "";
   try {
     if (enableCloudConversation) {
-      await store.conversationStore?.stickTopConversationActive(
-        conversationId,
-        checked
-      );
+      await store.conversationStore?.stickTopConversationActive(conversationId, checked);
     } else {
-      await store?.localConversationStore?.stickTopConversationActive(
-        conversationId,
-        checked
-      );
+      await store?.localConversationStore?.stickTopConversationActive(conversationId, checked);
     }
   } catch {
-    toast.info(
-      checked ? t("addStickTopFailText") : t("deleteStickTopFailText")
-    );
+    toast.info(checked ? t("addStickTopFailText") : t("deleteStickTopFailText"));
   }
 };
 
@@ -353,21 +339,60 @@ const changeTeamMute = (value: boolean) => {
   cursor: pointer;
 }
 
+/* 底部按钮容器 */
+.team-action-buttons {
+  position: absolute;
+  bottom: 30px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+/* 基础按钮样式 */
 .team-set-button {
   text-align: center;
   border-radius: 4px;
-  color: #f7f7f7;
-  background: #ff4d4f;
-  height: 32px;
   line-height: 32px;
-
-  width: 88px;
+  min-width: 120px;
+  padding: 0 16px;
   font-size: 14px;
-  position: absolute;
   cursor: pointer;
-  left: 50%;
-  bottom: 30px;
-  transform: translateX(-50%);
+  border: 1px solid transparent;
+  transition: all 0.3s;
+}
+
+/* 转让群主按钮 - 空心红色 */
+.team-transfer-button {
+  color: #ff4d4f;
+  background: #ffffff;
+  border-color: #ff4d4f;
+}
+
+.team-transfer-button:hover {
+  color: #ff7875;
+  border-color: #ff7875;
+}
+
+/* 解散群组按钮 - 实心红色 */
+.team-dismiss-button {
+  color: #ffffff;
+  background: #ff4d4f;
+}
+
+.team-dismiss-button:hover {
+  background: #ff7875;
+}
+
+/* 退出群组按钮 - 实心红色 */
+.team-leave-button {
+  color: #ffffff;
+  background: #ff4d4f;
+}
+
+.team-leave-button:hover {
+  background: #ff7875;
 }
 
 .team-set-item-flex {

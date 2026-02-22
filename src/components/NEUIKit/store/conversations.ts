@@ -1,8 +1,9 @@
-import { makeAutoObservable } from "mobx";
+import { makeAutoObservable, reaction } from "mobx";
 import RootStore from ".";
 import { AT_ALL_ACCOUNT } from "./constant";
 import { V2NIMClient } from "node-nim";
 import { V2NIMConst } from "../utils/constants";
+import { updateUnreadCount } from "../utils/electron";
 
 import { V2NIMConversationType } from "node-nim";
 import {
@@ -60,6 +61,15 @@ export class ConversationStore {
     nim.conversationService?.on(
       "totalUnreadCountChanged",
       this._onTotalUnreadCountChanged
+    );
+
+    // 自动同步未读消息数到主进程（托盘图标和 Dock 角标）
+    reaction(
+      () => this.totalUnreadCount,
+      (unreadCount) => {
+        this.logger?.log("同步未读消息数到主进程", unreadCount);
+        updateUnreadCount(unreadCount);
+      }
     );
   }
 

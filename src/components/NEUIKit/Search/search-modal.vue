@@ -12,12 +12,7 @@
     <div class="search-container-wrapper">
       <div class="search-input-wrapper">
         <div class="search-icon-wrapper">
-          <Icon
-            iconClassName="search-icon"
-            :size="16"
-            color="#A6ADB6"
-            type="icon-sousuo"
-          ></Icon>
+          <Icon iconClassName="search-icon" :size="16" color="#A6ADB6" type="icon-sousuo"></Icon>
         </div>
         <Input
           class="input"
@@ -63,6 +58,7 @@
             marginTop: '70px',
           }"
           :text="t('searchNoResText')"
+          :showImage="false"
         />
       </div>
     </div>
@@ -114,9 +110,7 @@ const handleClose = () => {
 const searchListWatch = autorun(() => {
   const friends =
     store?.uiStore.friends
-      .filter(
-        (item) => !store.relationStore.blacklist.includes(item.accountId || "")
-      )
+      .filter((item) => !store.relationStore.blacklist.includes(item.accountId || ""))
       .map((item) => {
         const user = store.userStore.users.get(item.accountId || "") || {
           accountId: "",
@@ -179,11 +173,7 @@ const searchResult = computed(() => {
           renderKey: "friends",
         });
         item.list.forEach(
-          (item: {
-            accountId?: any;
-            id?: string | undefined;
-            renderKey?: string;
-          }) => {
+          (item: { accountId?: any; id?: string | undefined; renderKey?: string }) => {
             res.push({
               ...item,
               renderKey: item.accountId,
@@ -195,35 +185,23 @@ const searchResult = computed(() => {
           id: "discussions",
           renderKey: "discussions",
         });
-        item.list.forEach(
-          (item: {
-            teamId?: any;
-            id?: string | undefined;
-            renderKey?: string;
-          }) => {
-            res.push({
-              ...item,
-              renderKey: item.teamId,
-            });
-          }
-        );
+        item.list.forEach((item: { teamId?: any; id?: string | undefined; renderKey?: string }) => {
+          res.push({
+            ...item,
+            renderKey: item.teamId,
+          });
+        });
       } else if (item.id === "groups") {
         res.push({
           id: "groups",
           renderKey: "groups",
         });
-        item.list.forEach(
-          (item: {
-            teamId?: any;
-            id?: string | undefined;
-            renderKey?: string;
-          }) => {
-            res.push({
-              ...item,
-              renderKey: item.teamId,
-            });
-          }
-        );
+        item.list.forEach((item: { teamId?: any; id?: string | undefined; renderKey?: string }) => {
+          res.push({
+            ...item,
+            renderKey: item.teamId,
+          });
+        });
       }
     });
     return res;
@@ -294,26 +272,18 @@ const handleItemClick = async (item: any) => {
     let conversationType;
     let receiverId;
     if (item.accountId) {
-      conversationType =
-        V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P;
+      conversationType = V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P;
       receiverId = item.accountId;
     } else if (item.teamId) {
-      conversationType =
-        V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM;
+      conversationType = V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM;
       receiverId = item.teamId;
     } else {
       throw Error("unknow scene");
     }
     if (enableCloudConversation) {
-      await store.conversationStore?.insertConversationActive(
-        conversationType,
-        receiverId
-      );
+      await store.conversationStore?.insertConversationActive(conversationType, receiverId);
     } else {
-      await store?.localConversationStore?.insertConversationActive(
-        conversationType,
-        receiverId
-      );
+      await store?.localConversationStore?.insertConversationActive(conversationType, receiverId);
     }
     emit("goChat");
   } catch {

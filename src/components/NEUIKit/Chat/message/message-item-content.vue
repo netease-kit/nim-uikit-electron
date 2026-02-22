@@ -53,6 +53,15 @@
     "
     :msg="props.msg"
   />
+  <!-- 合并转发消息 -->
+  <MessageMergeForward
+    v-else-if="
+      props.msg.messageType ===
+      V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+      store?.msgStore?.isChatMergedForwardMsg(props.msg)
+    "
+    :msg="props.msg"
+  />
   <!-- 未知消息 -->
   <div v-else>
     <div class="unknown-msg">[{{ t("unknownMsgText") }}]</div>
@@ -67,10 +76,14 @@ import MessageText from "./message-text.vue";
 import MessageAudio from "./message-audio.vue";
 import MessageG2 from "./message-g2.vue";
 import MessageImage from "./message-image.vue";
+import MessageMergeForward from "../forward/message-merge-forward.vue";
 import { V2NIMConst } from "../../utils/constants";
 import MessageVideo from "./message-video.vue";
 import { t } from "../../utils/i18n";
 import type { V2NIMMessageForUI } from "../../store/types";
+import { getContextState } from "../../utils/init";
+
+const { store } = getContextState();
 
 const props = withDefaults(
   defineProps<{

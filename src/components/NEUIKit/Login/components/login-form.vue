@@ -38,10 +38,7 @@
         >
           <template #addonAfter>
             <span
-              :class="[
-                'sms-addon-after',
-                { disabled: smsCount > 0 && smsCount < 60 },
-              ]"
+              :class="['sms-addon-after', { disabled: smsCount > 0 && smsCount < 60 }]"
               @click="startSmsCount()"
               >{{ smsText }}</span
             >
@@ -56,16 +53,16 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, computed } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import i18n from "../i18n/zh-cn";
 import { getLoginSmsCode, loginRegisterByCode } from "../utils/api";
 import FormInput from "./form-input.vue";
 import { showToast } from "../../utils/toast";
-
 import { initIMUIKit } from "../../utils/init";
 import { APP_KEY } from "../../utils/constants";
 import { useRouter } from "vue-router";
-import { STORAGE_KEY } from "../../utils/constants";
+import storageManager from "../../utils/storage";
+
 const router = useRouter();
 
 const mobileInputRule = {
@@ -89,6 +86,23 @@ const loginForm = reactive({
   smsCode: "",
 });
 
+// API 环境配置
+const apiEnv = ref<"prod" | "qa">("prod");
+
+onMounted(async () => {
+  // 获取 API 环境配置
+  const envValue = await storageManager.getItemAsync("smsApiEnv");
+  if (envValue === "qa" || envValue === "prod") {
+    apiEnv.value = envValue;
+  }
+});
+
+const getLoginUrl = () => {
+  const DEV_SMS_API_URL = "https://yiyong-user-center-qa.netease.im";
+  const PROD_SMS_API_URL = "https://yiyong-user-center.netease.im";
+  return apiEnv.value === "qa" ? DEV_SMS_API_URL : PROD_SMS_API_URL;
+};
+
 const smsText = computed(() => {
   if (smsCount.value > 0 && smsCount.value < 60) {
     return smsCount.value + i18n.smsCodeBtnTitleCount;
@@ -96,6 +110,7 @@ const smsText = computed(() => {
     return i18n.smsCodeBtnTitle;
   }
 });
+
 // 获取验证码
 async function startSmsCount() {
   if (!mobileInputRule.reg.test(loginForm.mobile)) {
@@ -106,7 +121,7 @@ async function startSmsCount() {
     return;
   }
   try {
-    await getLoginSmsCode({ mobile: loginForm.mobile });
+    await getLoginSmsCode({ mobile: loginForm.mobile, baseUrl: getLoginUrl() });
   } catch (error: any) {
     let msg = error.errMsg || error.msg || error.message || i18n.smsCodeFailMsg;
     if (msg.startsWith("request:fail")) {
@@ -133,7 +148,6 @@ async function startSmsCount() {
   }, 1000);
 }
 
-// 登录
 async function submitLoginForm() {
   if (
     !mobileInputRule.reg.test(loginForm.mobile) ||
@@ -146,17 +160,15 @@ async function submitLoginForm() {
     return;
   }
   try {
-    const res = await loginRegisterByCode(loginForm);
-    // 存储登录信息到 localStorage
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({
-        account: res.imAccid,
-        token: res.imToken,
-      })
-    );
+    const res = await loginRegisterByCode({
+      ...loginForm,
+      baseUrl: getLoginUrl(),
+    });
 
-    const { nim } = initIMUIKit(APP_KEY);
+    // 使用统一存储服务保存登录信息
+    await storageManager.saveLoginInfo(res.imAccid, res.imToken);
+
+    const { nim } = await initIMUIKit(APP_KEY);
 
     nim?.loginService
       ?.login(res.imAccid, res.imToken, {})
@@ -164,16 +176,14 @@ async function submitLoginForm() {
         // IM 登录成功后跳转到聊天页面
         router.push("/chat");
       })
-      .catch((error) => {
+      .catch(async (error) => {
         console.log("login error", error);
         if (error.code === 102422) {
-          // 账号被封禁
           showToast({
             message: "当前账号已被封禁",
             type: "info",
           });
-          // 登录信息无效，清除并跳转到登录页
-          localStorage.removeItem(STORAGE_KEY);
+          await storageManager.clearLoginInfo();
           router.push("/login");
         }
       });

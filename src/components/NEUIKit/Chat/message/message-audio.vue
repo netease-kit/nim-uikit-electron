@@ -21,13 +21,23 @@ import { ref, computed } from "vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import type { V2NIMMessageForUI } from "../../store/types";
 import type { V2NIMMessageAudioAttachment } from "node-nim/types/v2_def/v2_nim_struct_def";
+import {
+  downloadAudioSource,
+  checkLocalFileExists,
+  toLocalFileUrl,
+} from "../../utils/attachment-download";
 
 const props = withDefaults(
   defineProps<{
     msg: V2NIMMessageForUI;
   }>(),
-  {}
+  {},
 );
+
+// 本地音频路径
+const localAudioPath = ref("");
+// 是否正在下载
+const isDownloading = ref(false);
 
 // 音频图标类型 用于音频动态播放
 const audioIconType = ref("icon-yuyin3");
@@ -55,7 +65,7 @@ const audioContainerWidth = computed(() => {
 // 音频时长
 const duration = computed(() => {
   return formatDuration(
-    (props.msg.attachment as V2NIMMessageAudioAttachment)?.duration || 0
+    (props.msg.attachment as V2NIMMessageAudioAttachment)?.duration || 0,
   );
 });
 
@@ -82,21 +92,10 @@ const playAudioAnimation = () => {
   }
 };
 
-// 切换播放状态
-const togglePlay = (e: MouseEvent) => {
-  e.stopPropagation();
-  const oldAudio = pauseAllAudio();
-  const msgId = oldAudio?.getAttribute("msgId");
-  const attachment = props.msg.attachment as V2NIMMessageAudioAttachment;
+// 播放音频
+const playAudio = (audioUrl: string) => {
+  const audio = new Audio(audioUrl);
   const msg = props.msg;
-
-  // 如果是自己，暂停动画
-  if (msgId === msg.messageClientId) {
-    animationFlag.value = false;
-    return;
-  }
-
-  const audio = new Audio(attachment?.url);
 
   // 播放音频，并开始动画
   audio.id = "yx-audio-message";
@@ -112,6 +111,57 @@ const togglePlay = (e: MouseEvent) => {
     audio.parentNode?.removeChild(audio);
   });
   playAudioAnimation();
+};
+
+// 切换播放状态
+const togglePlay = async (e: MouseEvent) => {
+  e.stopPropagation();
+  const oldAudio = pauseAllAudio();
+  const msgId = oldAudio?.getAttribute("msgId");
+  const attachment = props.msg.attachment as V2NIMMessageAudioAttachment;
+  const msg = props.msg;
+
+  // 如果是自己，暂停动画
+  if (msgId === msg.messageClientId) {
+    animationFlag.value = false;
+    return;
+  }
+
+  // 如果正在下载，不做任何处理
+  if (isDownloading.value) {
+    return;
+  }
+
+  // 检查本地音频是否已存在
+  if (attachment?.path) {
+    const exists = await checkLocalFileExists(attachment.path);
+    if (exists) {
+      const localUrl = toLocalFileUrl(attachment.path);
+      localAudioPath.value = localUrl;
+      playAudio(localUrl);
+      return;
+    }
+  }
+
+  // 如果已有本地音频路径，直接播放
+  if (localAudioPath.value) {
+    playAudio(localAudioPath.value);
+    return;
+  }
+
+  // 需要下载音频文件
+  isDownloading.value = true;
+  const result = await downloadAudioSource(attachment, msg.messageClientId);
+  isDownloading.value = false;
+
+  if (result.success && result.localPath) {
+    const localUrl = toLocalFileUrl(result.localPath);
+    localAudioPath.value = localUrl;
+    playAudio(localUrl);
+  } else {
+    // 下载失败，尝试使用远程URL播放
+    playAudio(attachment?.url || "");
+  }
 };
 
 // 暂停所有音频播放

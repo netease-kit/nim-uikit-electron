@@ -2,12 +2,7 @@
   <div class="search-container-wrapper">
     <div class="search-input-wrapper" @click="searchModalVisible = true">
       <div class="search-icon-wrapper">
-        <Icon
-          iconClassName="search-icon"
-          :size="14"
-          color="#A6ADB6"
-          type="icon-sousuo"
-        ></Icon>
+        <Icon iconClassName="search-icon" :size="14" color="#A6ADB6" type="icon-sousuo"></Icon>
         <div class="search-title">{{ t("searchTitleText") }}</div>
       </div>
     </div>
@@ -28,22 +23,22 @@ import Add from "./add/index.vue";
 import { t } from "../utils/i18n";
 import SearchModal from "./search-modal.vue";
 import { showToast } from "../utils/toast";
-import { STORAGE_KEY } from "../utils/constants";
 import { useRouter } from "vue-router";
 import { getContextState } from "../utils/init";
+import storageManager from "../utils/storage";
 
 const searchModalVisible = ref(false);
 const { store, nim } = getContextState();
 
 const router = useRouter();
 
-const handelKickedOffline = () => {
+const handelKickedOffline = async () => {
   showToast({
     message: "您已被踢下线",
     type: "info",
   });
 
-  localStorage.removeItem(STORAGE_KEY);
+  await storageManager.clearLoginInfo();
   router.push("/login");
   store?.destroy();
   nim?.loginService?.off("kickedOffline", handelKickedOffline);

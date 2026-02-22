@@ -2,6 +2,7 @@ import { makeAutoObservable, runInAction } from "mobx";
 import { V2NIMClient } from "node-nim";
 import { frequencyControl } from "./utils";
 import {
+  V2NIMUploadFileTask,
   V2NIMUser,
   V2NIMUserUpdateParams,
 } from "node-nim/types/v2_def/v2_nim_struct_def";
@@ -103,13 +104,12 @@ export class UserStore {
     try {
       this.logger?.log("updateSelfUserProfileActive", updateParams, fileObj);
       if (fileObj) {
-        const filePath = typeof fileObj === 'string'
-          ? fileObj
-          : (fileObj as any).path;
+        const filePath =
+          typeof fileObj === "string" ? fileObj : (fileObj as any).path;
         try {
           const task = this.nim.storageService?.createUploadFileTask({
-            filePath
-          });
+            filePath,
+          }) as V2NIMUploadFileTask;
           const avatarUrl = await this.nim.storageService?.uploadFile(
             task,
             () => {
@@ -208,12 +208,12 @@ export class UserStore {
         this.nim?.loginService?.getLoginUser() as string,
       ]);
       runInAction(() => {
-        this.myUserInfo = myUserInfo?.[0];
+        this.myUserInfo = myUserInfo?.[0] as V2NIMUser;
         this.addUsers(myUserInfo as V2NIMUser[]);
       });
       this.logger?.log("getMyUserInfoActive success", myUserInfo);
 
-      return myUserInfo?.[0];
+      return myUserInfo?.[0] as V2NIMUser;
     } catch (error) {
       this.logger?.error("getMyUserInfoActive failed: ", error);
       throw error;

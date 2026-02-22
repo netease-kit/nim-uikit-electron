@@ -1,12 +1,6 @@
-// const baseUrl = "https://yiyong-user-center-qa.netease.im";
-const baseUrl = "https://yiyong-user-center.netease.im";
-// // @ts-ignore
-// BUILD_ENV === 'prod'
-//   ? 'https://yiyong-user-center.netease.im/'
-//   : 'https://yiyong-user-center-qa.netease.im'
-
+import { APP_KEY } from "../../utils/constants";
 const loginByCodeHeader = {
-  appKey: "",
+  appKey: APP_KEY,
   parentScope: 2,
   scope: 7,
 };
@@ -20,9 +14,10 @@ type LoginSmsCodeRes = {
   isFirstRegister: boolean;
 };
 export const getLoginSmsCode = (data: {
+  baseUrl: string;
   mobile: string;
 }): Promise<LoginSmsCodeRes> => {
-  const url = baseUrl + urlMap.getLoginSmsCode;
+  const url = data.baseUrl + urlMap.getLoginSmsCode;
 
   return fetch(url, {
     method: "POST",
@@ -44,8 +39,9 @@ export const getLoginSmsCode = (data: {
 export const loginRegisterByCode = (data: {
   mobile: string;
   smsCode: string;
+  baseUrl: string;
 }): Promise<LoginRegisterByCodeRes> => {
-  const url = baseUrl + urlMap.loginRegisterByCode;
+  const url = data.baseUrl + urlMap.loginRegisterByCode;
 
   return fetch(url, {
     method: "POST",

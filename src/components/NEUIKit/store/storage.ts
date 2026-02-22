@@ -2,6 +2,7 @@ import { makeAutoObservable } from "mobx";
 import RootStore from ".";
 import { V2NIMClient } from "node-nim";
 import { logger } from "./utils";
+import { V2NIMUploadFileTask } from "node-nim/types/v2_def/v2_nim_struct_def";
 
 /**Mobx 可观察对象，负责管理文件存储的子 store */
 export class StorageStore {
@@ -27,13 +28,12 @@ export class StorageStore {
 
     try {
       // 根据类型获取文件路径
-      const filePath = typeof fileObj === 'string'
-        ? fileObj
-        : (fileObj as any).path || ''; // Electron 环境下的 File 对象有 path 属性
+      const filePath =
+        typeof fileObj === "string" ? fileObj : (fileObj as any).path || ""; // Electron 环境下的 File 对象有 path 属性
 
       const task = this.nim.storageService?.createUploadFileTask({
-        filePath
-      });
+        filePath,
+      }) as V2NIMUploadFileTask;
 
       avatarUrl = (await this.nim.storageService?.uploadFile(task, () => {
         /**/
