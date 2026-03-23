@@ -55,7 +55,7 @@ class RootStore {
     aiStream: true,
     iconfontUrl: [],
     enableDesktopNotification: true,
-    enableCloudSearch: true,
+    enableCloudSearch: false,
   };
   sdkOptions: any = {};
   connectStore: ConnectStore;
@@ -105,7 +105,7 @@ class RootStore {
       aiStream: true,
       iconfontUrl: [],
       enableDesktopNotification: true,
-      enableCloudSearch: true, // 默认启用云端搜索
+      enableCloudSearch: false, // 默认禁用云端搜索
       ...localOptions,
     } as Required<LocalOptions>;
     this.logger =

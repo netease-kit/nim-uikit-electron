@@ -7,18 +7,14 @@
 <script lang="ts">
 import { initIMUIKit, releaseIMUIKit } from "./components/NEUIKit/utils/init";
 import { showToast } from "./components/NEUIKit/utils/toast";
-import AboutModal from "./components/NEUIKit/CommonComponents/AboutModal.vue";
-import storageManager from "./components/NEUIKit/utils/storage";
 
 export default {
   name: "App",
   components: {
-    AboutModal,
   },
   data() {
     return {
       showUiKit: false,
-      showAboutModal: false,
     };
   },
 
@@ -39,7 +35,6 @@ export default {
               type: "info",
             });
           }
-          await storageManager.clearLoginInfo();
           this.$router.push("/login");
         });
     },
@@ -48,7 +43,7 @@ export default {
     this.init({
       appkey: "", //您在云信控制台注册的appkey
       account: "", //云信控制台上的account
-      token: "",
+      token: ""
     });
   },
   beforeUnmount() {

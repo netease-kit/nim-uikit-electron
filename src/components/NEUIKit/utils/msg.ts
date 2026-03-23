@@ -1,4 +1,4 @@
-import { V2NIMConst } from "./constants";
+import { V2NIMConst, REPLY_MSG_TYPE_MAP } from "./constants";
 import { t } from "./i18n";
 import { V2NIMMessageType } from "node-nim";
 const translate = (key: string): string => {
@@ -74,6 +74,44 @@ export const getMsgContentTipByType = (msg: {
       // 对于未知消息类型，返回默认的翻译提示文本
       return translate("unknownMsgText");
   }
+};
+
+/**
+ * 判断消息是否为合并转发消息 (attachment.type === 101)
+ */
+const isMergeForwardMsg = (msg: any): boolean => {
+  if (msg?.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
+    return false;
+  }
+  try {
+    let rawAttachment: any = msg.attachment;
+    if (rawAttachment?.raw) {
+      rawAttachment = rawAttachment.raw;
+    }
+    if (typeof rawAttachment === "string") {
+      rawAttachment = JSON.parse(rawAttachment);
+    }
+    if (rawAttachment && rawAttachment.type === 101) {
+      return true;
+    }
+  } catch {}
+  return false;
+};
+
+/**
+ * 获取回复引用消息的类型显示文案
+ * 对 CUSTOM 类型进一步判断是否为合并转发消息
+ */
+export const getReplyMsgTypeText = (msg: any): string => {
+  if (!msg?.messageType) return t("unknownMsgText");
+
+  // 对自定义消息特殊处理
+  if (msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
+    return isMergeForwardMsg(msg) ? t("chatHistoryText") : t("customMsgText");
+  }
+
+  // 其他类型走 REPLY_MSG_TYPE_MAP
+  return REPLY_MSG_TYPE_MAP[msg.messageType] || t("unknownMsgText");
 };
 
 // 判定消息是否成功. 历史背景: 当 c++ 端没有得到服务器返回的 aiErrorCode 时, 会返回 0. uikit 兼容视为 200.

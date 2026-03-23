@@ -268,18 +268,34 @@ const videoFirstFrameDataUrl = computed(() => {
 
 /** 视频播放URL（优先使用本地路径） */
 const videoUrl = computed(() => {
+  //@ts-ignore
+  const ext = props.msg.attachment?.ext || "mp4";
+  const extWithDot = ext.startsWith(".") ? ext : `.${ext}`;
+  //@ts-ignore
+  const attachmentName = props.msg.attachment?.name as string | undefined;
+  // 优先使用原始文件名，如果没有则使用 messageClientId 构建
+  // 如果原始文件名没有扩展名，补上视频扩展名
+  let fileName: string;
+  if (attachmentName) {
+    const hasExt = /\.\w+$/.test(attachmentName);
+    fileName = hasExt ? attachmentName : `${attachmentName}${extWithDot}`;
+  } else {
+    fileName = `${props.msg.messageClientId}${extWithDot}`;
+  }
+
   // 优先使用本地视频路径
   if (localVideoPath.value) {
-    return localVideoPath.value;
+    // 为 local-file:// URL 附加文件名和扩展名信息，
+    // 使浏览器右键"另存为"时能保存为正确的视频文件名
+    const separator = localVideoPath.value.includes("?") ? "&" : "?";
+    return `${localVideoPath.value}${separator}filename=${encodeURIComponent(fileName)}`;
   }
 
   //@ts-ignore
   const baseUrl = props.msg.attachment?.url || "";
-  //@ts-ignore
-  const fileName = `${props.msg.messageClientId}-video-${props.msg.attachment?.ext}`;
 
   // 如果 URL 没有文件扩展名，尝试添加
-  if (baseUrl && !baseUrl.match(/\.(mp4|webm|ogg|avi|mov)$/i)) {
+  if (baseUrl && !baseUrl.match(/\.(mp4|webm|ogg|avi|mov)(\?|$)/i)) {
     const separator = baseUrl.includes("?") ? "&" : "?";
     return `${baseUrl}${separator}filename=${encodeURIComponent(fileName)}`;
   }

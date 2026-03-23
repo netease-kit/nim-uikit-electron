@@ -419,6 +419,7 @@ onUnmounted(() => {
   transition: background-color 0.2s;
   font-size: 14px;
   color: #333;
+  white-space: nowrap;
 }
 
 .menu-item:hover {

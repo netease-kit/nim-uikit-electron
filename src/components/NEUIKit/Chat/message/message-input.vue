@@ -49,7 +49,7 @@
             <div v-else>
               {{
                 replyMsg?.messageType
-                  ? `[${REPLY_MSG_TYPE_MAP[replyMsg.messageType] || t("unknownMsgText")}]`
+                  ? `[${getReplyMsgTypeText(replyMsg)}]`
                   : "[Unknown]"
               }}
             </div>
@@ -145,7 +145,8 @@
 import Face from "./face.vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import { ref, computed, onUnmounted, onMounted, nextTick, watch } from "vue";
-import { ALLOW_AT, events, REPLY_MSG_TYPE_MAP, AT_ALL_ACCOUNT } from "../../utils/constants";
+import { ALLOW_AT, events, AT_ALL_ACCOUNT } from "../../utils/constants";
+import { getReplyMsgTypeText } from "../../utils/msg";
 import { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { t } from "../../utils/i18n";
 import MessageOneLine from "../../CommonComponents/MessageOneLine.vue";
@@ -693,6 +694,13 @@ const handlePaste = async (event: ClipboardEvent) => {
 // 处理粘贴的文件
 const handlePasteFile = async (file: File) => {
   try {
+    // 检查文件大小，超过 100MB 拒绝处理
+    const maxPasteSize = 100 * 1024 * 1024; // 100MB
+    if (file.size > maxPasteSize) {
+      toast.error(t("uploadLimitText"));
+      return;
+    }
+
     // 读取文件为 ArrayBuffer
     const buffer = await file.arrayBuffer();
     const bufferArray = Array.from(new Uint8Array(buffer));
@@ -753,13 +761,19 @@ const sendImageMessage = async (fileInfo: {
     fileInfo.height || 0
   );
 
-  await store?.msgStore.sendMessageActive({
-    msg: imgMsg as V2NIMMessage,
-    conversationId: props.conversationId,
-    previewImg: fileInfo.base64,
-    progress: () => true,
-    sendBefore: () => scrollBottom(),
-  });
+  try {
+    await store?.msgStore.sendMessageActive({
+      msg: imgMsg as V2NIMMessage,
+      conversationId: props.conversationId,
+      previewImg: fileInfo.base64,
+      progress: () => true,
+      sendBefore: () => scrollBottom(),
+    });
+  } catch (error) {
+    // 发送失败由 SDK 处理，界面会显示发送失败状态（红色感叹号）
+    // 这里捕获错误不再向上传播，避免显示"粘贴文件失败"
+    console.warn("sendImageMessage failed:", error);
+  }
 
   scrollBottom();
 };
@@ -791,15 +805,21 @@ const sendVideoMessage = async (fileInfo: {
     fileInfo.width || 0
   );
 
-  await store?.msgStore.sendMessageActive({
-    msg: videoMsg as V2NIMMessage,
-    conversationId: props.conversationId,
-    previewImg: fileInfo.base64,
-    previewWidth: fileInfo.width,
-    previewHeight: fileInfo.height,
-    progress: () => true,
-    sendBefore: () => scrollBottom(),
-  });
+  try {
+    await store?.msgStore.sendMessageActive({
+      msg: videoMsg as V2NIMMessage,
+      conversationId: props.conversationId,
+      previewImg: fileInfo.base64,
+      previewWidth: fileInfo.width,
+      previewHeight: fileInfo.height,
+      progress: () => true,
+      sendBefore: () => scrollBottom(),
+    });
+  } catch (error) {
+    // 发送失败由 SDK 处理，界面会显示发送失败状态（红色感叹号）
+    // 这里捕获错误不再向上传播，避免显示"粘贴文件失败"
+    console.warn("sendVideoMessage failed:", error);
+  }
 
   scrollBottom();
 };
@@ -816,12 +836,18 @@ const sendFileMessage = async (fileInfo: { url: string; name: string; size: numb
 
   const fileMsg = nim?.messageCreator?.createFileMessage(fileInfo.url, fileInfo.name, sceneName);
 
-  await store?.msgStore.sendMessageActive({
-    msg: fileMsg as V2NIMMessage,
-    conversationId: props.conversationId,
-    progress: () => true,
-    sendBefore: () => scrollBottom(),
-  });
+  try {
+    await store?.msgStore.sendMessageActive({
+      msg: fileMsg as V2NIMMessage,
+      conversationId: props.conversationId,
+      progress: () => true,
+      sendBefore: () => scrollBottom(),
+    });
+  } catch (error) {
+    // 发送失败由 SDK 处理，界面会显示发送失败状态（红色感叹号）
+    // 这里捕获错误不再向上传播，避免显示"粘贴文件失败"
+    console.warn("sendFileMessage failed:", error);
+  }
 
   scrollBottom();
 };
@@ -874,6 +900,23 @@ onMounted(() => {
   emitter.on(events.ON_REEDIT_MSG, (_msg) => {
     const msg = _msg as V2NIMMessageForUI;
     const _replyMsg = props.replyMsgsMap?.[msg.messageClientId || ""];
+    // 从撤回消息的 serverExtension 中恢复@状态
+    // 直接发送的@消息：serverExtension 包含 yxAitMsg，恢复 selectedAtMembers
+    // 转发的@消息：forwardMsgActive 已清除 yxAitMsg，selectedAtMembers 为空
+    try {
+      const ext = msg.serverExtension ? JSON.parse(msg.serverExtension) : {};
+      const yxAitMsg = ext?.yxAitMsg;
+      if (yxAitMsg && typeof yxAitMsg === "object") {
+        selectedAtMembers.value = Object.keys(yxAitMsg).map((accountId) => ({
+          accountId,
+          appellation: (yxAitMsg[accountId]?.text || "").replace(/^@/, ""),
+        }));
+      } else {
+        selectedAtMembers.value = [];
+      }
+    } catch {
+      selectedAtMembers.value = [];
+    }
     // 此处将 replyMsg.value 置空是为了解决：撤回普通消息1，撤回回复消息2，重新编辑消息2，再重新编辑消息1，输入框上方依然显示消息2的引用，消息1发送出去消息消息2的引用消息
     replyMsg.value = undefined;
     isReplyMsg.value = false;

@@ -17,14 +17,14 @@ export async function handleJumpStateBeforeSend(
   const { store } = getContextState();
 
   // 如果不在跳转状态，直接返回
-  if (!store?.uiStore.isJumpedToMessage) {
+  if (!store?.uiStore.isJumpedFromHistory) {
     return;
   }
 
   console.log(`${logPrefix}: 检测到跳转状态，准备重置状态并加载最新消息`);
 
   // 退出跳转状态
-  store.uiStore.setJumpedToMessage(false);
+  store.uiStore.setJumpedFromHistory(false);
 
   if (conversationId) {
     // 清空当前会话的消息缓存

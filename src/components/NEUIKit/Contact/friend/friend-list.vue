@@ -15,7 +15,12 @@
           {{ item.title }}
         </div>
         <!-- 好友项 -->
-        <FriendItem v-else :friend="item.data" @click="handleFriendItemClick" />
+        <FriendItem
+          :key="`${item.data.accountId}-${item.data.appellation}-${item.data.updateTime}`"
+          v-else
+          :friend="item.data"
+          @click="handleFriendItemClick"
+        />
       </div>
     </RecycleScroller>
 
@@ -60,7 +65,7 @@ const emit = defineEmits<{
 }>();
 
 const friendGroupList = ref<
-  { key: string; data: { accountId: string; appellation: string }[] }[]
+  { key: string; data: { accountId: string; appellation: string; updateTime: number }[] }[]
 >([]);
 
 /** 好友列表 */
@@ -71,8 +76,9 @@ const flattenedFriendList = computed(() => {
   const result: Array<{
     id: string;
     type: "group" | "friend";
+    updateTime: number;
     title?: string;
-    data?: { accountId: string; appellation: string };
+    data?: { accountId: string; appellation: string; updateTime: number };
   }> = [];
 
   friendGroupList.value.forEach((group, groupIndex) => {
@@ -81,6 +87,7 @@ const flattenedFriendList = computed(() => {
       id: `group-${groupIndex}`,
       type: "group",
       title: group.key,
+      updateTime: Date.now() + groupIndex, // 为分组生成唯一时间戳
     });
 
     // 添加该分组下的好友
@@ -89,6 +96,7 @@ const flattenedFriendList = computed(() => {
         id: friend.accountId,
         type: "friend",
         data: friend,
+        updateTime: friend.updateTime, // 从 friend 中提取 updateTime
       });
     });
   });
@@ -104,6 +112,7 @@ const selectedAccount = ref("");
 function handleFriendItemClick(friend: {
   accountId: string;
   appellation: string;
+  updateTime: number;
 }) {
   selectedAccount.value = friend.accountId;
   showUserCard.value = true;
@@ -143,10 +152,7 @@ const subscribeUserStatus = (friends: string[]) => {
 
 /** 连接状态监听 断网重连后重新订阅 */
 const connectWatch = autorun(() => {
-  if (
-    store?.connectStore.connectStatus ===
-    V2NIMConnectStatus.V2NIM_CONNECT_STATUS_CONNECTED
-  ) {
+  if (store?.connectStore.connectStatus === V2NIMConnectStatus.V2NIM_CONNECT_STATUS_CONNECTED) {
     subscribeUserStatus(friendListWithAccount.value);
   }
 });
@@ -156,18 +162,15 @@ watch(
   () => friendGroupList.value.length, // 监听 length 属性
   () => {
     subscribeUserStatus(friendListWithAccount.value);
-  },
+  }
 );
 
 /** 好友列表监听 */
 const friendListWatch = autorun(() => {
   const data = store?.uiStore.friends
-    .filter(
-      (item) =>
-        item.accountId &&
-        !store?.relationStore.blacklist.includes(item.accountId),
-    )
+    .filter((item) => item.accountId && !store?.relationStore.blacklist.includes(item.accountId))
     .map((item) => ({
+      updateTime: item.updateTime,
       accountId: item.accountId,
       appellation: store?.uiStore.getAppellation({
         account: item.accountId || "",
@@ -178,12 +181,12 @@ const friendListWatch = autorun(() => {
 
   friendGroupList.value = friendGroupByPy(
     data?.filter(
-      (f): f is { accountId: string; appellation: string } => !!f.accountId,
+      (f): f is { accountId: string; appellation: string; updateTime: number } => !!f.accountId
     ) || [],
     {
       firstKey: "appellation",
     },
-    false,
+    false
   );
 });
 

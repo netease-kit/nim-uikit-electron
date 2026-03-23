@@ -3,12 +3,15 @@ import RootStore from "../store";
 import { V2NIMClient } from "node-nim";
 import type { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 
+
 let nim: V2NIMClient | null = null;
 let uikitStore: RootStore | null = null;
 
 export let imAppkey: string = "";
 
 export const initIMUIKit = async (appkey: string) => {
+  // 先加载配置
+
   nim = new V2NIMClient();
   imAppkey = appkey;
   nim.init({
@@ -32,8 +35,7 @@ export const initIMUIKit = async (appkey: string) => {
       teamMsgReceiptVisible: true,
       teamJoinMode: V2NIMConst.V2NIMTeamJoinMode.V2NIM_TEAM_JOIN_MODE_FREE,
       // 群组被邀请模式，默认需要验证
-      teamAgreeMode:
-        V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
+      teamAgreeMode: V2NIMConst.V2NIMTeamAgreeMode.V2NIM_TEAM_AGREE_MODE_NO_AUTH,
       // 是否展示群管理员
       teamManagerVisible: true,
       // 是否启用云端搜索
@@ -55,7 +57,7 @@ export const initIMUIKit = async (appkey: string) => {
         return { ...options };
       },
     },
-    "Electron",
+    "Electron"
   );
 
   return {

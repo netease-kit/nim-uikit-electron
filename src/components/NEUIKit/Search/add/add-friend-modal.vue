@@ -41,24 +41,15 @@
         {{ t("accountNotMatchText") }}
       </div>
       <div class="user-wrapper" v-else-if="searchResState === 'searchResult'">
-        <Avatar
-          class="user-avatar"
-          :account="(userInfo && userInfo.accountId) || ''"
-        />
+        <Avatar class="user-avatar" :account="(userInfo && userInfo.accountId) || ''" />
         <div class="user-info">
           <div class="user-nick">
-            {{
-              (userInfo && userInfo.name) || (userInfo && userInfo.accountId)
-            }}
+            {{ displayName }}
           </div>
           <div class="user-id">{{ userInfo && userInfo.accountId }}</div>
         </div>
         <!-- 如果是好友之间去聊天，如果不是好友，添加好友 -->
-        <Button
-          v-if="relation !== 'stranger'"
-          class="go-chat-button"
-          @click="gotoChat"
-        >
+        <Button v-if="relation !== 'stranger'" class="go-chat-button" @click="gotoChat">
           {{ t("chatButtonText") }}
         </Button>
         <Button v-else class="go-chat-button" @click="applyFriend">
@@ -70,7 +61,7 @@
 </template>
 
 <script lang="ts" setup>
-import { onUnmounted, ref } from "vue";
+import { onUnmounted, ref, computed } from "vue";
 import Avatar from "../../CommonComponents/Avatar.vue";
 import Modal from "../../CommonComponents/Modal.vue";
 import Icon from "../../CommonComponents/Icon.vue";
@@ -90,7 +81,6 @@ interface Props {
   visible?: boolean;
 }
 
- 
 withDefaults(defineProps<Props>(), {
   visible: false,
 });
@@ -115,18 +105,25 @@ const handleUpdateVisible = (value: boolean) => {
 };
 
 // 搜索结果状态
-const searchResState = ref<"beginSearch" | "searchEmpty" | "searchResult">(
-  "beginSearch"
-);
+const searchResState = ref<"beginSearch" | "searchEmpty" | "searchResult">("beginSearch");
 const userInfo = ref<V2NIMUser>();
 const relation = ref<Relation | undefined>("stranger");
 const searchText = ref("");
+
+// 计算显示名称,优先显示好友备注
+const displayName = computed(() => {
+  if (!userInfo.value?.accountId) return "";
+  return (
+    store?.uiStore.getAppellation({
+      account: userInfo.value.accountId,
+    }) || userInfo.value.accountId
+  );
+});
+
 const uninstallRelationWatch = autorun(() => {
   store?.uiStore.friends;
   if (userInfo.value?.accountId) {
-    relation.value = store?.uiStore.getRelation(
-      userInfo.value?.accountId
-    ).relation;
+    relation.value = store?.uiStore.getRelation(userInfo.value?.accountId).relation;
   }
 });
 
@@ -140,9 +137,7 @@ const handleSearch = async () => {
     } else {
       userInfo.value = user;
 
-      relation.value = store?.uiStore.getRelation(
-        user.accountId || ""
-      ).relation;
+      relation.value = store?.uiStore.getRelation(user.accountId || "").relation;
       searchResState.value = "searchResult";
     }
   } catch {

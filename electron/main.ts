@@ -10,6 +10,9 @@ import * as path from "node:path";
  * NEUIKitBridge 是一个可独立拷贝的 Electron 主进程功能模块集合。
  * 开发者可以将整个 NEUIKitBridge 目录拷贝到自己的项目中，然后按需导入所需的模块。
  *
+ * 统一导入方式：
+ *   从 NEUIKitBridge/index.ts 统一导入所有需要的模块功能
+ *
  * 每个模块提供三类导出：
  *   - init*()：初始化函数，在 app.whenReady() 后调用
  *   - register*Handlers()：IPC 处理器注册函数，在渲染进程加载前调用
@@ -20,34 +23,32 @@ import * as path from "node:path";
  *   - window-close：窗口关闭行为管理（隐藏到托盘 vs 真正退出）
  *   - app：应用控制（重启、DevTools）
  *   - version：版本信息获取
+ *   - notification：桌面通知
  *   - fs：文件系统操作（文件读写、目录管理、本地文件协议）
  *   - navigation：页面导航事件
  *   - i18n：国际化支持
- *
- * 按需引入示例：
- *   // 只需要托盘功能
- *   import { initTray, registerTrayHandlers } from "./NEUIKitBridge/tray";
- *
- *   // 只需要版本信息
- *   import { registerVersionHandlers } from "./NEUIKitBridge/version";
  */
-import { initTray, registerTrayHandlers } from "./NEUIKitBridge/tray";
 import {
+  // Tray 模块
+  initTray,
+  registerTrayHandlers,
+  // Window Close 模块
   initWindowClose,
   markAppQuitting,
   registerWindowCloseHandlers,
-} from "./NEUIKitBridge/window-close";
-import { initApp, registerAppHandlers } from "./NEUIKitBridge/app";
-import { registerVersionHandlers } from "./NEUIKitBridge/version";
-import {
+  // App 模块
+  initApp,
+  registerAppHandlers,
+  // Version 模块
+  registerVersionHandlers,
+  // Notification 模块
   initNotificationService,
   registerNotificationHandlers,
-} from "./NEUIKitBridge/notification";
-import {
+  // FS 模块
   registerFsHandlers,
   registerLocalFileProtocol,
   initLocalFileProtocol,
-} from "./NEUIKitBridge/fs";
+} from "./NEUIKitBridge";
 import { registerStorageHandlers } from "./preload/storage-service";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -70,6 +71,8 @@ function createWindow() {
   win = new BrowserWindow({
     width: 1280,
     height: 855,
+    minWidth: 1024,
+    minHeight: 768,
     icon: path.join(process.env.VITE_PUBLIC!, "electron-vite.svg"),
     titleBarStyle: process.platform === "darwin" ? "hiddenInset" : undefined,
     autoHideMenuBar: true,
@@ -129,7 +132,9 @@ app.on("activate", () => {
  *   3. 同时需要在 preload.ts 中删除对应的 API 创建代码
  *   4. 部分 handler 需要传入回调函数或窗口获取器，请参考各模块的类型定义
  */
-function registerIpcHandlers() {
+function registerNEUIKitIpcHandlers() {
+  // 初始化本地文件协议处理器（必须在 app.whenReady() 之后调用）
+  initLocalFileProtocol();
   if (ipcRegistered) return;
 
   /**
@@ -165,9 +170,7 @@ registerLocalFileProtocol();
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
-  // 初始化本地文件协议处理器（必须在 app.whenReady() 之后调用）
-  initLocalFileProtocol();
-  registerIpcHandlers();
+  registerNEUIKitIpcHandlers();
   createWindow();
 
   if (win) {

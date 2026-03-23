@@ -23,7 +23,10 @@ export class UserStore {
 
   private _getUserInfo = frequencyControl(this._getUserInfos, 1000, 100);
 
-  constructor(private rootStore: RootStore, private nim: V2NIMClient) {
+  constructor(
+    private rootStore: RootStore,
+    private nim: V2NIMClient
+  ) {
     makeAutoObservable(this);
     this._onUserProfileChanged = this._onUserProfileChanged.bind(this);
     this.logger = this.rootStore.logger;
@@ -95,47 +98,44 @@ export class UserStore {
    * updateParams.tel - 手机号 <br>
    * updateParams.serverExtension - 扩展字段 <br>
    *
-   * @param fileObj - 头像文件对象、或者在小程序中，文件路径
+   * @param filePath - 头像文件路径，小程序为文件路径
    */
   async updateSelfUserProfileActive(
     updateParams: V2NIMUserUpdateParams,
-    fileObj?: File | string
+    filePath?: string
   ): Promise<void> {
+    this.logger?.log("updateSelfUserProfileActive", updateParams, filePath);
     try {
-      this.logger?.log("updateSelfUserProfileActive", updateParams, fileObj);
-      if (fileObj) {
-        const filePath =
-          typeof fileObj === "string" ? fileObj : (fileObj as any).path;
+      if (filePath) {
         try {
-          const task = this.nim.storageService?.createUploadFileTask({
-            filePath,
-          }) as V2NIMUploadFileTask;
-          const avatarUrl = await this.nim.storageService?.uploadFile(
-            task,
-            () => {
-              /**/
-            }
-          );
+          this.logger?.log("avatar file path detected:", filePath);
 
+          let actualFilePath = filePath;
+          if (filePath.startsWith("local-file://")) {
+            actualFilePath = window.electronAPI.fs.fromLocalFileUrl(filePath);
+            this.logger?.log("converted file path:", actualFilePath);
+          }
+
+          const task = this.nim.storageService?.createUploadFileTask({
+            filePath: actualFilePath,
+          }) as V2NIMUploadFileTask;
+
+          const avatarUrl = await this.nim.storageService?.uploadFile(task, () => {
+            /**/
+          });
+          this.logger?.log("avatar uploaded, new URL:", avatarUrl);
           updateParams.avatar = avatarUrl;
         } catch (error) {
-          this.logger?.warn("upload avatar error and save continue.", error);
+          this.logger?.error("avatar upload failed:", error);
+          throw error;
         }
       }
 
+      this.logger?.log("saving user profile:", updateParams);
       await this.nim.userService?.updateSelfUserProfile(updateParams);
-      this.logger?.log(
-        "updateSelfUserProfileActive success",
-        updateParams,
-        fileObj
-      );
+      this.logger?.log("updateSelfUserProfileActive success", updateParams, filePath);
     } catch (error) {
-      this.logger?.error(
-        "updateSelfUserProfileActive failed:",
-        updateParams,
-        error,
-        fileObj
-      );
+      this.logger?.error("updateSelfUserProfileActive failed:", updateParams, error, filePath);
       throw error;
     }
   }
@@ -183,19 +183,13 @@ export class UserStore {
     try {
       this.logger?.log("getUserListFromCloudActive", accountIds);
 
-      const users = await this.nim.userService?.getUserListFromCloud(
-        accountIds
-      );
+      const users = await this.nim.userService?.getUserListFromCloud(accountIds);
 
       this.addUsers(users as V2NIMUser[]);
       this.logger?.log("getUserListFromCloudActive success", users, accountIds);
       return users as V2NIMUser[];
     } catch (error) {
-      this.logger?.error(
-        "getUserListFromCloudActive failed: ",
-        accountIds,
-        error
-      );
+      this.logger?.error("getUserListFromCloudActive failed: ", accountIds, error);
       throw error;
     }
   }
@@ -220,9 +214,7 @@ export class UserStore {
     }
   }
 
-  private async _getUserInfos(
-    accountIds: string[]
-  ): Promise<{ accountId: string }[]> {
+  private async _getUserInfos(accountIds: string[]): Promise<{ accountId: string }[]> {
     const users = await this.nim.userService?.getUserList(accountIds);
 
     this.addUsers(users as { accountId: string }[]);

@@ -1,6 +1,10 @@
 <template>
   <div class="msg-merge-forward" @click.stop="historyModalVisible = true">
-    <div class="msg-merge-forward-title">{{ title }}</div>
+    <div class="msg-merge-forward-title">
+      <span v-if="titleSuffix" class="title-name">{{ titleName }}</span>
+      <span v-if="titleSuffix" class="title-suffix">&nbsp;{{ titleSuffix }}</span>
+      <span v-else>{{ titleName }}</span>
+    </div>
     <div class="msg-merge-forward-content">
       <div v-for="(item, index) in abstracts" :key="index" class="msg-merge-forward-item">
         <span class="sender">{{ item.senderNick }}: </span>
@@ -12,9 +16,9 @@
     </div>
   </div>
 
-  <ForwardMessageHistoryModal 
-    :visible="historyModalVisible" 
-    :msg="props.msg" 
+  <ForwardMessageHistoryModal
+    :visible="historyModalVisible"
+    :msg="props.msg"
     @close="historyModalVisible = false"
   />
 </template>
@@ -83,12 +87,20 @@ const data = computed(() => {
   return {};
 });
 
-const title = computed(() => {
+const titleName = computed(() => {
   const sessionName = data.value.sessionName || data.value.name || data.value.sessionId || data.value.to || '';
   if (!sessionName) {
     return t('chatHistoryText');
   }
-  return t('messageOfText') ? `${sessionName} ${t('messageOfText')}` : `${sessionName} ${t('chatHistoryText')}`;
+  return sessionName;
+});
+
+const titleSuffix = computed(() => {
+  const sessionName = data.value.sessionName || data.value.name || data.value.sessionId || data.value.to || '';
+  if (!sessionName) {
+    return '';
+  }
+  return t('messageOfText') || t('chatHistoryText');
 });
 
 interface AbstractItem {
@@ -121,11 +133,23 @@ const abstracts = computed<AbstractItem[]>(() => {
 }
 
 .msg-merge-forward-title {
+  display: flex;
   font-weight: 500;
   color: #333;
   margin-bottom: 8px;
   overflow: hidden;
+  white-space: nowrap;
+}
+
+.title-name {
+  overflow: hidden;
   text-overflow: ellipsis;
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+.title-suffix {
+  flex-shrink: 0;
   white-space: nowrap;
 }
 

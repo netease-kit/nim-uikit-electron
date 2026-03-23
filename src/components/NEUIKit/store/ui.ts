@@ -28,7 +28,7 @@ export class UiStore {
   selectedMessageIds: string[] = [];
 
   // 跳转到消息相关状态
-  isJumpedToMessage = false; // 是否是通过搜索跳转到的消息
+  isJumpedFromHistory = false; // 是否从历史记录搜索跳转到消息
   targetMessageId = ""; // 目标消息ID
 
   constructor(
@@ -241,10 +241,12 @@ export class UiStore {
   }
 
   /**
-   * 设置跳转到消息状态
+   * 设置是否从历史记录跳转的状态
+   * @param jumped - 是否处于历史跳转状态
    */
-  setJumpedToMessage(jumped: boolean): void {
-    this.isJumpedToMessage = jumped;
+  setJumpedFromHistory(jumped: boolean): void {
+    this.logger?.log("setJumpedFromHistory", jumped);
+    this.isJumpedFromHistory = jumped;
   }
 
   /**
@@ -257,8 +259,8 @@ export class UiStore {
   /**
    * 清除跳转消息状态
    */
-  clearJumpedToMessage(): void {
-    this.isJumpedToMessage = false;
+  clearJumpedFromHistory(): void {
+    this.isJumpedFromHistory = false;
     this.targetMessageId = "";
   }
 }

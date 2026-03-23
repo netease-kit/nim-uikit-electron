@@ -1,5 +1,9 @@
 <template>
+  <div v-if="readonly" class="unknown-msg">
+    [{{ t("audioMsgText") }}]
+  </div>
   <div
+    v-else
     :class="!msg.isSelf ? 'audio-in' : 'audio-out'"
     :style="{ width: audioContainerWidth + 'px' }"
     @click="togglePlay"
@@ -19,6 +23,7 @@
 /** 音频消息 */
 import { ref, computed } from "vue";
 import Icon from "../../CommonComponents/Icon.vue";
+import { t } from "../../utils/i18n";
 import type { V2NIMMessageForUI } from "../../store/types";
 import type { V2NIMMessageAudioAttachment } from "node-nim/types/v2_def/v2_nim_struct_def";
 import {
@@ -30,8 +35,9 @@ import {
 const props = withDefaults(
   defineProps<{
     msg: V2NIMMessageForUI;
+    readonly?: boolean;
   }>(),
-  {},
+  { readonly: false },
 );
 
 // 本地音频路径
@@ -173,6 +179,12 @@ const pauseAllAudio = (): HTMLAudioElement => {
 </script>
 
 <style scoped>
+/* 只读模式文本标签 */
+.unknown-msg {
+  font-size: 14px;
+  color: #000000;
+}
+
 .audio-dur {
   height: 24px;
   line-height: 24px;

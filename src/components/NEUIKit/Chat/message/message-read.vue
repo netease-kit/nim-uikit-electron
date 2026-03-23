@@ -1,8 +1,9 @@
 <template>
   <div
     v-if="
-      props.msg.messageType !==
-        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+      (props.msg.messageType !==
+        V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM ||
+        store?.msgStore?.isChatMergedForwardMsg(props.msg)) &&
       props.msg.recallType !== 'reCallMsg' &&
       props.msg.sendingState ===
         V2NIMConst.V2NIMMessageSendingState

@@ -25,7 +25,7 @@
       <!-- 用户信息 -->
       <div class="user-info">
         <!-- 头像和用户名 -->
-        <div class="user-header" @click="triggerFileInput">
+        <div class="user-header" @click="handleChooseAvatar">
           <div class="avatar-container">
             <Avatar
               v-if="!tempAvatarUrl"
@@ -33,23 +33,11 @@
               :account="myUserInfo?.accountId || ''"
               size="60"
             />
-            <img
-              v-else
-              :src="tempAvatarUrl"
-              class="temp-avatar"
-              alt="临时头像"
-            />
+            <img v-else :src="tempAvatarUrl" class="temp-avatar" alt="临时头像" />
           </div>
           <div class="username">
             {{ myUserInfo?.name || myUserInfo?.accountId }}
           </div>
-          <input
-            type="file"
-            ref="fileInput"
-            style="display: none"
-            accept="image/*"
-            @change="onChangeAvatar"
-          />
         </div>
       </div>
 
@@ -164,11 +152,12 @@ const editableUserInfo = ref({
   mobile: "",
   email: "",
   sign: "",
+  avatar: "", // ✅ 添加 avatar 字段
 });
 
 // 添加临时头像状态
 const tempAvatarUrl = ref<string>("");
-const tempAvatarFile = ref<File | null>(null);
+const tempAvatarFilePath = ref<string>(""); // 存储文件路径而不是 File 对象
 
 const uninstallMyUserInfoWatch = autorun(() => {
   myUserInfo.value = store?.userStore.myUserInfo;
@@ -187,18 +176,12 @@ watch(
         mobile: newUserInfo.mobile || "",
         email: newUserInfo.email || "",
         sign: newUserInfo.sign || "",
+        avatar: newUserInfo.avatar || "", // ✅ 初始化时复制当前头像
       };
     }
   },
   { immediate: true }
 );
-
-const fileInput = ref<HTMLInputElement | null>(null);
-
-// 触发文件选择
-const triggerFileInput = () => {
-  fileInput.value?.click();
-};
 
 const handleMobileInput = (event: Event) => {
   const target = event.target as HTMLInputElement;
@@ -214,61 +197,39 @@ const handleMobileInput = (event: Event) => {
   }
 };
 
-// 头像更改处理
-const onChangeAvatar = async (event: Event) => {
-  const target = event.target as HTMLInputElement;
-  const file = target.files?.[0];
-
-  if (!file) return;
-
-  // 检查文件类型
-  if (!file.type.startsWith("image/")) {
-    showToast({
-      message: t("FailAvatarText"),
-      type: "error",
-    });
-    return;
-  }
-
+// 头像更改处理 - 使用 Electron 的 chooseFile API
+const handleChooseAvatar = async () => {
   try {
-    // 创建临时预览URL
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      tempAvatarUrl.value = e.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    const result = await window.electronAPI.fs.chooseFile({
+      type: "image",
+      title: t("selectAvatarText") || "选择头像",
+    });
 
-    // 保存文件引用，等待用户点击保存
-    tempAvatarFile.value = file;
-  } catch {
+    if (!result) return; // 用户取消选择
+
+    const { file } = result;
+
+    // 保存文件路径和预览图
+    tempAvatarFilePath.value = file.url; // file.url 是文件的完整路径
+    tempAvatarUrl.value = file.base64 || ""; // 使用 base64 预览图
+  } catch (error) {
+    console.error("选择头像失败:", error);
     showToast({
       message: t("FailAvatarText"),
       type: "error",
     });
-  } finally {
-    // 清空 input 值，允许选择相同文件
-    if (fileInput.value) {
-      fileInput.value.value = "";
-    }
   }
 };
 
 const handleSave = async () => {
   try {
-    // 如果有临时头像文件，先上传头像
-    if (tempAvatarFile.value) {
-      await store?.userStore.updateSelfUserProfileActive(
-        {
-          ...myUserInfo.value,
-        },
-        tempAvatarFile.value
-      );
-    }
-
-    // 更新其他用户信息
-    await store?.userStore.updateSelfUserProfileActive({
-      ...editableUserInfo.value,
-    });
+    // ✅ 修复: 一次性更新所有用户信息(包括头像)
+    await store?.userStore.updateSelfUserProfileActive(
+      {
+        ...editableUserInfo.value, // 包含编辑的字段
+      },
+      tempAvatarFilePath.value || undefined // 如果有新头像文件路径则上传
+    );
 
     showToast({
       message: t("saveSuccessText"),
@@ -278,7 +239,7 @@ const handleSave = async () => {
 
     // 清理临时状态
     tempAvatarUrl.value = "";
-    tempAvatarFile.value = null;
+    tempAvatarFilePath.value = "";
 
     emit("update:visible", false);
   } catch {
@@ -293,14 +254,14 @@ const handleSave = async () => {
 const handleCancel = () => {
   // 取消时清理临时头像状态
   tempAvatarUrl.value = "";
-  tempAvatarFile.value = null;
+  tempAvatarFilePath.value = "";
   emit("update:visible", false);
 };
 
 const handleClose = () => {
   // 关闭时清理临时头像状态
   tempAvatarUrl.value = "";
-  tempAvatarFile.value = null;
+  tempAvatarFilePath.value = "";
   emit("update:visible", false);
 };
 

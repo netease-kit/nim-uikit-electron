@@ -19,7 +19,10 @@ export class FriendStore {
   friends: Map<string, V2NIMFriend> = new Map();
   logger: typeof storeUtils.logger | null = null;
 
-  constructor(private rootStore: RootStore, private nim: V2NIMClient) {
+  constructor(
+    private rootStore: RootStore,
+    private nim: V2NIMClient
+  ) {
     makeAutoObservable(this);
 
     this._onFriendAdded = this._onFriendAdded.bind(this);
@@ -50,10 +53,7 @@ export class FriendStore {
     this.resetState();
     this.nim.friendService?.off("friendAdded", this._onFriendAdded);
     this.nim.friendService?.off("friendDeleted", this._onFriendDeleted);
-    this.nim.friendService?.off(
-      "friendAddApplication",
-      this._onFriendAddApplication
-    );
+    this.nim.friendService?.off("friendAddApplication", this._onFriendAddApplication);
     this.nim.friendService?.off("friendAddRejected", this._onFriendAddRejected);
     this.nim.friendService?.off("friendInfoChanged", this._onFriendInfoChanged);
   }
@@ -120,10 +120,7 @@ export class FriendStore {
    * @param accountId 账号
    * @param params 添加好友的配置参数
    */
-  async addFriendActive(
-    accountId: string,
-    params: V2NIMFriendAddParams
-  ): Promise<void> {
+  async addFriendActive(accountId: string, params: V2NIMFriendAddParams): Promise<void> {
     try {
       this.logger?.log("addFriendActive", accountId);
       await this.nim.friendService?.addFriend(accountId, params);
@@ -138,19 +135,13 @@ export class FriendStore {
    * 接受好友申请
    * @param application 申请添加好友的相关信息
    */
-  async acceptAddApplicationActive(
-    application: V2NIMFriendAddApplication
-  ): Promise<void> {
+  async acceptAddApplicationActive(application: V2NIMFriendAddApplication): Promise<void> {
     try {
       this.logger?.log("acceptAddApplicationActive", application);
       await this.nim.friendService?.acceptAddApplication(application);
       this.logger?.log("acceptAddApplicationActive success", application);
     } catch (error) {
-      this.logger?.error(
-        "acceptAddApplicationActive failed: ",
-        application,
-        error
-      );
+      this.logger?.error("acceptAddApplicationActive failed: ", application, error);
       throw error;
     }
   }
@@ -167,30 +158,17 @@ export class FriendStore {
   ): Promise<void> {
     try {
       this.logger?.log("rejectAddApplicationActive", application, postscript);
-      await this.nim.friendService?.rejectAddApplication(
-        application,
-        postscript as string
-      );
+      await this.nim.friendService?.rejectAddApplication(application, postscript as string);
       this.rootStore.sysMsgStore.updateFriendApplyMsg([
         {
           ...application,
           status:
-            V2NIMConst.V2NIMFriendAddApplicationStatus
-              .V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED,
+            V2NIMConst.V2NIMFriendAddApplicationStatus.V2NIM_FRIEND_ADD_APPLICATION_STATUS_REJECTED,
         },
       ]);
-      this.logger?.log(
-        "rejectFriendApplyActive success",
-        application,
-        postscript
-      );
+      this.logger?.log("rejectFriendApplyActive success", application, postscript);
     } catch (error) {
-      this.logger?.error(
-        "rejectFriendApplyActive failed: ",
-        application,
-        postscript,
-        error
-      );
+      this.logger?.error("rejectFriendApplyActive failed: ", application, postscript, error);
       throw error;
     }
   }
@@ -218,21 +196,13 @@ export class FriendStore {
    * @param accountId 账号
    * @param params 设置好友信息的配置参数。
    */
-  async setFriendInfoActive(
-    accountId: string,
-    params: V2NIMFriendSetParams
-  ): Promise<void> {
+  async setFriendInfoActive(accountId: string, params: V2NIMFriendSetParams): Promise<void> {
     try {
       this.logger?.log("setFriendInfoActive", accountId, params);
       await this.nim.friendService?.setFriendInfo(accountId, params);
       this.logger?.log("setFriendInfoActive success", accountId, params);
     } catch (error) {
-      this.logger?.error(
-        "setFriendInfoActive failed: ",
-        accountId,
-        params,
-        error
-      );
+      this.logger?.error("setFriendInfoActive failed: ", accountId, params, error);
       throw error;
     }
   }
@@ -296,12 +266,10 @@ export class FriendStore {
       {
         operatorAccountId: this.rootStore.userStore.myUserInfo.accountId,
         applicantAccountId: friend.accountId as string,
-        recipientAccountId: this.rootStore.userStore.myUserInfo
-          .accountId as string,
+        recipientAccountId: this.rootStore.userStore.myUserInfo.accountId as string,
         timestamp: Date.now(),
         status:
-          V2NIMConst.V2NIMFriendAddApplicationStatus
-            .V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED,
+          V2NIMConst.V2NIMFriendAddApplicationStatus.V2NIM_FRIEND_ADD_APPLICATION_STATUS_AGREED,
         read: true,
       },
     ]);
@@ -322,10 +290,7 @@ export class FriendStore {
   private _onFriendAddApplication(application: V2NIMFriendAddApplication) {
     this.logger?.log("_onFriendAddApplication", application);
     // 多端登录时，本端发送好友申请，多端登录另一端会收到该事件，此时需要过滤，多端登录另一端不需要提醒
-    if (
-      application.applicantAccountId !==
-      this.rootStore.userStore.myUserInfo.accountId
-    ) {
+    if (application.applicantAccountId !== this.rootStore.userStore.myUserInfo.accountId) {
       this.rootStore.sysMsgStore.addFriendApplyMsg([application]);
     }
   }
@@ -344,7 +309,7 @@ export class FriendStore {
   }
 
   /**
-   * 好友信息更新回调，返回变更的好友信息，包括本端直接更新的好友信息和其他端同步更新的好友信息
+   * 好友信息更新回调,返回变更的好友信息,包括本端直接更新的好友信息和其他端同步更新的好友信息
    */
   private _onFriendInfoChanged(friend: V2NIMFriend) {
     this.logger?.log("_onFriendInfoChanged", friend);

@@ -77,8 +77,16 @@
       </div>
     </div>
     <!-- 常规消息 -->
-    <div v-else class="msg-common-container" :class="{ 'is-multi-select': isMultiSelectMode }">
-      <div v-if="isMultiSelectMode" class="msg-checkbox-wrapper" @click.stop="toggleSelection">
+    <div
+      v-else
+      class="msg-common-container"
+      :class="{ 'is-multi-select': isMultiSelectMode && !props.readonly }"
+    >
+      <div
+        v-if="isMultiSelectMode && !props.readonly"
+        class="msg-checkbox-wrapper"
+        @click.stop="toggleSelection"
+      >
         <input
           type="checkbox"
           :checked="isSelected"
@@ -93,7 +101,7 @@
           flex: 1,
         }"
       >
-        <MessageAvatar :account="msg.senderId" :to="to" />
+        <MessageAvatar :account="msg.senderId" :to="to" :readonly="props.readonly" />
         <div class="msg-content" :style="{ alignItems: !msg.isSelf ? 'flex-start' : 'flex-end' }">
           <div
             class="msg-name"
@@ -104,8 +112,8 @@
           >
             {{ appellation }}
           </div>
-          <MessageBubble :msg="msg" :bg-visible="true">
-            <MessageItemContent :msg="msg" :replyMsg="replyMsg" />
+          <MessageBubble :msg="msg" :bg-visible="true" :readonly="props.readonly">
+            <MessageItemContent :msg="msg" :replyMsg="replyMsg" :readonly="props.readonly" />
           </MessageBubble>
           <!-- 消息时间 -->
           <div class="msg-timestamp" :class="{ 'msg-timestamp-self': msg.isSelf }">
@@ -141,8 +149,11 @@ const props = withDefaults(
     replyMsgsMap?: {
       [key: string]: V2NIMMessageForUI;
     };
+    readonly?: boolean;
   }>(),
-  {}
+  {
+    readonly: false,
+  }
 );
 
 const { store, nim } = getContextState();
@@ -263,13 +274,24 @@ const handleHighlightMessage = (data: any) => {
 
 // 监听昵称变化
 const uninstallAppellationWatch = autorun(() => {
-  // 昵称展示顺序 群昵称 > 备注 > 个人昵称 > 帐号
-  // 断网重联下，若群成员修改昵称，可以通过拉取群成员接口，触发此函数执行，获取最新的群昵称
-  appellation.value = store?.uiStore?.getAppellation({
-    account: props.msg.senderId as string,
-    teamId:
-      conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM ? to : "",
-  }) as string;
+  if (props.readonly) {
+    // 合并转发详情等只读场景：昵称展示优先级为 个人昵称 > 账号
+    appellation.value = store?.uiStore?.getAppellation({
+      account: props.msg.senderId as string,
+      ignoreAlias: true,
+      nickFromMsg: props.msg.senderName || "",
+    }) as string;
+  } else {
+    // 正常聊天界面：昵称展示顺序 备注 > 群昵称 > 个人昵称 > 帐号
+    // 断网重联下，若群成员修改昵称，可以通过拉取群成员接口，触发此函数执行，获取最新的群昵称
+    appellation.value = store?.uiStore?.getAppellation({
+      account: props.msg.senderId as string,
+      teamId:
+        conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+          ? to
+          : "",
+    }) as string;
+  }
 });
 
 onMounted(() => {

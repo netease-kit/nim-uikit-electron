@@ -11,7 +11,11 @@
         {{ t("loadingText") }}
       </div>
       <div class="msg-tip" v-show="noMore">{{ t("noMoreText") }}</div>
-      <div v-for="(item, index) in msgs" :key="item.messageClientId">
+      <div
+        v-for="(item, index) in msgs"
+        :key="item.messageClientId"
+        :data-msg-id="item.messageClientId"
+      >
         <MessageItem
           :msg="item"
           :index="index"
@@ -105,7 +109,7 @@ const handleScroll = () => {
       distanceFromBottom,
       loadingMoreMessages: loadingMoreMessages.value,
       msgsLength: props.msgs.length,
-      isJumpedToMessage: store?.uiStore.isJumpedToMessage,
+      isJumpedFromHistory: store?.uiStore.isJumpedFromHistory,
     });
 
     // 如果滚动到顶部附近且不在加载中，则加载更多历史消息
@@ -117,7 +121,7 @@ const handleScroll = () => {
     // 如果滚动到底部附近且不在加载中，则加载更多新消息（仅在跳转状态下）
     if (distanceFromBottom <= 50 && !loadingMoreMessages.value && props.msgs.length > 0) {
       const lastMsg = props.msgs[props.msgs.length - 1];
-      const isJumpedState = store?.uiStore.isJumpedToMessage;
+      const isJumpedState = store?.uiStore.isJumpedFromHistory;
       console.log("检查跳转状态:", {
         isJumpedState,
         distanceFromBottom,
@@ -132,6 +136,7 @@ const handleScroll = () => {
         emitter.emit(events.GET_NEXT_MSG, lastMsg);
       } else if (lastMsg && !isJumpedState) {
         console.log("不在跳转状态，不加载新消息");
+        emitter.emit(events.CLOSE_NEW_MSG_TIP);
       }
     }
 
@@ -227,9 +232,22 @@ defineExpose({
   messageListRef,
 });
 
+// 滚动指定消息到视野内
+const handleScrollMsgIntoView = (messageClientId: unknown) => {
+  if (!messageClientId || !messageListRef.value) return;
+  nextTick(() => {
+    const msgEl = messageListRef.value?.querySelector(`[data-msg-id="${messageClientId}"]`);
+    if (msgEl) {
+      (msgEl as HTMLElement).scrollIntoView({
+        block: "nearest",
+        behavior: "smooth",
+      });
+    }
+  });
+};
+
 // 重置加载状态
 const resetLoadingMoreMessages = () => {
-  console.log("🔄 收到 RESET_LOADING_MORE_MESSAGES 事件，重置 loadingMoreMessages 为 false");
   loadingMoreMessages.value = false;
 };
 
@@ -240,10 +258,12 @@ onMounted(() => {
   // 监听加载完成事件 - 修复事件名称
   emitter.on(events.RESET_LOADING_MORE_MESSAGES, resetLoadingMoreMessages);
 
+  // 监听滚动指定消息到视野内事件（多选模式触发）
+  emitter.on(events.SCROLL_MSG_INTO_VIEW, handleScrollMsgIntoView);
+
   // 添加滚动监听器，实现向上滚动加载更多
   nextTick(() => {
     if (messageListRef.value) {
-      console.log("添加滚动监听器到:", messageListRef.value);
       messageListRef.value.addEventListener("scroll", handleScroll);
 
       // 测试初始状态
@@ -265,6 +285,9 @@ onUnmounted(() => {
 
   // 清理加载完成事件监听器
   emitter.off(events.RESET_LOADING_MORE_MESSAGES, resetLoadingMoreMessages);
+
+  // 清理滚动指定消息到视野内事件监听器
+  emitter.off(events.SCROLL_MSG_INTO_VIEW, handleScrollMsgIntoView);
 
   teamWatch();
 

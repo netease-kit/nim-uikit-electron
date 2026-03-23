@@ -3,13 +3,15 @@
     <img
       v-if="showImage"
       class="empty-img"
-      src="https://yx-web-nosdn.netease.im/common/e0f58096f06c18cdd101f2614e6afb09/empty.png"
+      :src="emptyImg"
     />
     <div class="empty-text">{{ text }}</div>
   </div>
 </template>
 
 <script lang="ts" setup>
+import emptyImg from "./assets/empty.png";
+
 defineProps({
   text: {
     type: String,

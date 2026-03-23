@@ -21,13 +21,11 @@
         <!-- 搜索输入区域 -->
         <div class="search-section">
           <div class="search-input-wrapper">
-            <Icon type="icon-sousuo" :size="16" color="#999" class="search-icon" />
             <input
               v-model="searchKeyword"
               type="text"
               :placeholder="t('searchHistoryPlaceholder')"
               class="search-input"
-              @input="handleSearchInput"
               @keydown.enter="() => handleSearch()"
             />
             <span class="input-clear" v-if="searchKeyword" @mousedown.prevent @click="clearSearch">
@@ -46,6 +44,9 @@
                 ></path>
               </svg>
             </span>
+            <button class="search-button" @click="() => handleSearch()">
+              {{ t("searchButtonText") }}
+            </button>
           </div>
         </div>
 
@@ -53,17 +54,11 @@
         <div class="search-results" v-if="showSearchResults">
           <!-- 搜索状态 -->
           <div v-if="searchLoading" class="search-loading">
-            <Icon type="icon-jiazai" :size="16" class="loading-icon" />
             <span>{{ t("searching") }}</span>
           </div>
 
           <!-- 搜索结果列表 -->
           <div v-if="!searchLoading && searchResults.length > 0" class="results-list">
-            <!-- 结果计数头部 - 固定在顶部 -->
-            <div class="results-header">
-              {{ t("searchResultsCount", { count: searchResults.length }) }}
-            </div>
-
             <div class="results-virtual-list">
               <RecycleScroller
                 class="scroller"
@@ -118,7 +113,7 @@
 
 <script lang="ts" setup>
 /** 历史记录 */
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 import { t } from "../../utils/i18n";
 import { RecycleScroller } from "vue-virtual-scroller";
 import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
@@ -174,6 +169,10 @@ let highlightTimer: NodeJS.Timeout | null = null;
 // 搜索请求序列号，用于处理竞态条件
 let searchRequestId = 0;
 
+// 🔑 网络错误防抖: 记录最后一次网络错误的时间
+let lastNetworkErrorTime = 0;
+const NETWORK_ERROR_COOLDOWN = 3000; // 网络错误后3秒内不重试
+
 // 清理所有定时器
 const clearAllTimers = () => {
   clearTimeout(searchInputTimer.value!);
@@ -185,8 +184,11 @@ const clearAllTimers = () => {
 };
 
 // 显示搜索结果的条件
+// 🔑 修复: 只要执行过搜索(currentSearchKeyword不为空),就一直显示搜索结果
+// 即使用户修改了输入框内容,也保持显示上一次搜索的结果,直到重新点击搜索按钮
 const showSearchResults = computed(() => {
-  return searchKeyword.value.trim().length > 0;
+  // 只要曾经搜索过(currentSearchKeyword不为空),就显示搜索结果区域
+  return currentSearchKeyword.value.length > 0;
 });
 
 // 是否已经搜索过
@@ -222,19 +224,6 @@ const displayItems = computed(() => {
 
   return items;
 });
-
-// 搜索处理函数
-const handleSearchInput = () => {
-  // 清除之前的定时器
-  if (searchInputTimer.value) {
-    clearTimeout(searchInputTimer.value);
-  }
-
-  // 设置新的定时器，防抖处理
-  searchInputTimer.value = setTimeout(() => {
-    handleSearch();
-  }, 500);
-};
 
 const handleSearch = async (isLoadMore: boolean = false) => {
   const keyword = searchKeyword.value.trim();
@@ -286,6 +275,9 @@ const handleSearch = async (isLoadMore: boolean = false) => {
 
     // 判断是否还有更多数据
     hasMoreResults.value = results.length === SEARCH_HISTORY_LIMIT;
+
+    // 🔑 成功加载,重置网络错误冷却期
+    lastNetworkErrorTime = 0;
   } catch (error) {
     // 同样需要检查请求是否过期
     if (currentRequestId !== searchRequestId) {
@@ -293,14 +285,32 @@ const handleSearch = async (isLoadMore: boolean = false) => {
     }
 
     console.error("搜索失败:", error);
-    toast.error(t("searchError"));
-    if (!isLoadMore) {
-      searchResults.value = [];
-    }
-    hasMoreResults.value = false;
+
     //@ts-ignore
-    if (store.localOptions?.enableCloudSearch && error.code === 192003) {
-      toast.error(t("offlineText"));
+    const errorCode = error?.code;
+
+    // 🔑 修复: 区分网络错误和其他错误
+    // 如果是网络错误(190002),不设置hasMoreResults=false,允许联网后继续加载
+    if (errorCode === 190002) {
+      // 网络错误,保持分页状态,只提示错误
+      console.log("网络错误,保持分页状态,允许恢复网络后继续加载");
+
+      // 🔑 记录网络错误时间,启动冷却期,避免无限重试
+      lastNetworkErrorTime = Date.now();
+
+      toast.error(t("networkError")); // "当前网络错误"
+    } else {
+      // 其他错误,设置没有更多结果
+      toast.error(t("searchError"));
+      if (!isLoadMore) {
+        searchResults.value = [];
+      }
+      hasMoreResults.value = false;
+
+      //@ts-ignore
+      if (store.localOptions?.enableCloudSearch && errorCode === 192003) {
+        toast.error(t("offlineText"));
+      }
     }
   } finally {
     // 只有当这是最新请求时才更新loading状态
@@ -324,6 +334,18 @@ const clearSearch = () => {
   }
 };
 
+// 监听搜索关键词变化，当输入框清空时自动清除搜索结果
+watch(searchKeyword, (newValue) => {
+  const trimmedValue = newValue.trim();
+  // 当输入框内容为空时，清除搜索结果
+  if (!trimmedValue) {
+    searchResults.value = [];
+    currentSearchKeyword.value = "";
+    hasMoreResults.value = true;
+    loadingMore.value = false;
+  }
+});
+
 const handleResultClick = async (message: V2NIMMessageForUI) => {
   try {
     if (!store) {
@@ -339,10 +361,13 @@ const handleResultClick = async (message: V2NIMMessageForUI) => {
     // 2. 跳转到对应会话
     await store.uiStore.selectConversation(message.conversationId!);
 
-    // 3. 跳转到指定消息并加载上下文
+    // 3. 设置从历史搜索跳转的状态为true
+    store.uiStore.setJumpedFromHistory(true);
+
+    // 4. 跳转到指定消息并加载上下文
     await store.msgStore.jumpToMessageActive(message, message.conversationId!, 15);
 
-    // 4. 等待DOM更新后滚动到目标消息
+    // 5. 等待DOM更新后滚动到目标消息
     scrollTimer = setTimeout(() => {
       if (message.messageClientId) {
         const targetElementId = `message-item-${message.messageClientId}`;
@@ -368,7 +393,7 @@ const handleResultClick = async (message: V2NIMMessageForUI) => {
       }
     }, 200); // 等待消息列表渲染完成
 
-    // 5. 清空搜索结果
+    // 6. 清空搜索结果
     clearSearch();
   } catch (error) {
     console.error("Jump to message failed:", error);
@@ -387,8 +412,22 @@ const handleScroll = (event: Event) => {
   const threshold = 50;
   const isNearBottom = scrollTop + clientHeight >= scrollHeight - threshold;
 
-  if (isNearBottom && hasMoreResults.value && !loadingMore.value && !searchLoading.value) {
+  // 🔑 添加网络错误冷却期检查
+  const now = Date.now();
+  const isInCooldown = now - lastNetworkErrorTime < NETWORK_ERROR_COOLDOWN;
+
+  if (
+    isNearBottom &&
+    hasMoreResults.value &&
+    !loadingMore.value &&
+    !searchLoading.value &&
+    !isInCooldown
+  ) {
     handleSearch(true); // 加载更多
+  } else if (isInCooldown && isNearBottom) {
+    console.log(
+      `网络错误冷却期内，跳过加载请求。剩余: ${Math.ceil((NETWORK_ERROR_COOLDOWN - (now - lastNetworkErrorTime)) / 1000)}秒`
+    );
   }
 };
 
@@ -444,14 +483,11 @@ const handleCancel = () => {};
   align-items: center;
   background: #f8f8f8;
   border-radius: 8px;
-  padding: 8px 12px;
+  padding: 8px 0px 8px 12px;
   height: 32px;
   margin-bottom: 12px;
   box-sizing: border-box;
-}
-
-.search-icon {
-  margin-right: 8px;
+  gap: 8px;
 }
 
 .search-input {
@@ -462,6 +498,7 @@ const handleCancel = () => {};
   font-size: 14px;
   color: #333;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .search-input::placeholder {
@@ -475,6 +512,44 @@ const handleCancel = () => {};
 
 .clear-icon:hover {
   color: #666 !important;
+}
+
+.search-button {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 8px;
+  margin-left: 10px;
+  height: 28px;
+  background: #4991dd;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  font-size: 14px;
+  font-weight: 500;
+  color: #fff;
+  white-space: nowrap;
+  line-height: 1;
+}
+
+.search-button:hover:not(:disabled) {
+  background: #2968b0;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(51, 126, 204, 0.3);
+}
+
+.search-button:active:not(:disabled) {
+  background: #1f5a96;
+  transform: translateY(0);
+  box-shadow: 0 1px 2px rgba(51, 126, 204, 0.2);
+}
+
+.search-button:disabled {
+  background: #d9d9d9;
+  color: #999;
+  cursor: not-allowed;
 }
 
 /* 搜索结果区域 */
@@ -513,14 +588,6 @@ const handleCancel = () => {};
   overflow: auto;
   display: flex;
   flex-direction: column;
-}
-
-.results-header {
-  padding: 12px 16px;
-  background: #f8f8f8;
-  color: #666;
-  font-size: 12px;
-  border-bottom: 1px solid #f0f0f0;
 }
 
 .no-results {

@@ -421,9 +421,26 @@ export class MsgStore {
         return;
       }
 
+      // 断网保护：文件类消息（图片/视频/文件）在断网时不调用 SDK sendMessage，
+      // 避免 native 模块在断网时处理文件上传导致进程崩溃
+      const isFileTypeMsg =
+        newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_FILE ||
+        newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
+        newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO;
+
+      const isDisconnected =
+        this.rootStore.connectStore.connectStatus !==
+        V2NIMConst.V2NIMConnectStatus.V2NIM_CONNECT_STATUS_CONNECTED;
+
+      if (isFileTypeMsg && isDisconnected) {
+        this.logger?.warn("sendMessageActive: 断网状态下发送文件类消息，直接标记为失败", newMsg);
+        this._handleSendMsgFail(newMsg, -1);
+        return;
+      }
+
       // 调用sdk 接口 发送消息
       // @ts-ignore
-      const { message } = await this.nim?.messageService?.sendMessage(
+      const sendResult = await this.nim?.messageService?.sendMessage(
         newMsg,
         conversationId,
         finalParams,
@@ -460,6 +477,17 @@ export class MsgStore {
         }
       );
 
+      // 空值保护：断网等异常情况下 sendMessage 可能返回 undefined 或不包含 message
+      const message = sendResult?.message;
+      if (!message) {
+        this.logger?.error(
+          "sendMessageActive: sendMessage returned no message, treating as failure",
+          newMsg
+        );
+        this._handleSendMsgFail(newMsg, 0);
+        return;
+      }
+
       if (finalAIConfig) {
         onAISend?.(message, finalAIConfig);
       }
@@ -470,6 +498,7 @@ export class MsgStore {
         msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_IMAGE ||
         msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_VIDEO
       ) {
+        // @ts-ignore uploadProgress 为UI层扩展字段
         message.uploadProgress = 100;
       }
 
@@ -483,12 +512,7 @@ export class MsgStore {
       return message;
     } catch (error) {
       this.logger?.error("sendMessageActive failed: ", error as V2NIMError, newMsg);
-      // 手动取消上传
-      if ((error as V2NIMError).code === 191002) {
-        this.removeMsg(conversationId, [newMsg.messageClientId as string]);
-      } else {
-        this._handleSendMsgFail(newMsg, (error as V2NIMError).code as number);
-      }
+      this._handleSendMsgFail(newMsg, (error as V2NIMError).code as number);
 
       if (newMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
         this.removeReplyMsgActive(conversationId);
@@ -506,7 +530,9 @@ export class MsgStore {
     try {
       this.logger?.log("cancelMessageAttachmentUploadActive", msg);
       await this.nim?.messageService?.cancelMessageAttachmentUpload(this.handleMsgForSDK(msg));
-      this.removeMsg(msg.conversationId, [msg.messageClientId as string]);
+      // 取消上传后，将消息标记为发送失败状态，保留在聊天列表中
+      this._handleSendMsgFail(msg, 191002);
+
       this.logger?.log("cancelMessageAttachmentUploadActive success", msg);
     } catch (error) {
       this.logger?.error("cancelMessageAttachmentUploadActive failed: ", msg, error);
@@ -524,8 +550,8 @@ export class MsgStore {
       await this.nim?.messageService?.sendP2PMessageReceipt(this.handleMsgForSDK(msg));
       this.logger?.log("sendMsgReceiptActive success", msg);
     } catch (error) {
+      // 已读回执发送失败不影响主流程，仅记录日志，不向上抛出异常
       this.logger?.error("sendMsgReceiptActive failed: ", msg, error as V2NIMError);
-      throw error;
     }
   }
 
@@ -683,7 +709,22 @@ export class MsgStore {
 
       const msgs = await this.nim?.messageService?.getMessageList(finalParams);
 
-      this.addMsg(conversationId, msgs as V2NIMMessage[]);
+      // 修正历史消息中的 SENDING 状态：从数据库加载的消息不可能正在发送中，
+      // SENDING 状态说明上次发送被中断（如断网、崩溃），应修正为 FAILED
+      const correctedMsgs = (msgs as V2NIMMessage[])?.map((msg) => {
+        if (
+          msg.sendingState ===
+          V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING
+        ) {
+          return {
+            ...msg,
+            sendingState: V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED,
+          };
+        }
+        return msg;
+      });
+
+      this.addMsg(conversationId, correctedMsgs as V2NIMMessage[]);
       // 如果是群组消息，需要获取下自己发出的消息已读未读数
       if (
         conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM &&
@@ -1027,6 +1068,17 @@ export class MsgStore {
               newMsg.textOfVoice = _msg.textOfVoice;
             }
 
+            // 保留图片/视频消息的预览图信息，避免切换会话后发送失败消息的缩略图丢失
+            if (_msg.previewImg && !newMsg.previewImg) {
+              newMsg.previewImg = _msg.previewImg;
+            }
+            if (_msg.previewWidth && !newMsg.previewWidth) {
+              newMsg.previewWidth = _msg.previewWidth;
+            }
+            if (_msg.previewHeight && !newMsg.previewHeight) {
+              newMsg.previewHeight = _msg.previewHeight;
+            }
+
             _msgs.splice(_msgs.indexOf(_msg), 1, newMsg);
           }
         } else {
@@ -1198,6 +1250,7 @@ export class MsgStore {
   ): {
     content: string;
     depth: number;
+    msgDepths: Map<string, number>;
   } {
     const header = {
       version: 1,
@@ -1211,6 +1264,7 @@ export class MsgStore {
       const user = this.rootStore.userStore.users.get(msg.senderId as string);
       const nick = this.rootStore.uiStore.getAppellation({
         account: msg.senderId as string,
+        ignoreAlias: true,
       });
 
       let serverExt: any = {};
@@ -1224,8 +1278,14 @@ export class MsgStore {
       serverExt.mergedMessageAvatarKey = user?.avatar || "";
       serverExt.mergedMessageNickKey = nick || "";
 
+      // 清除回复和@相关字段，合并转发后不展示被回复消息和@效果
+      delete serverExt.yxReplyMsg;
+      delete serverExt.yxAitMsg;
+
+      const { threadReply, ...msgWithoutReply } = msg as any;
+
       return {
-        ...msg,
+        ...msgWithoutReply,
         serverExtension: JSON.stringify(serverExt),
       };
     });
@@ -1236,6 +1296,7 @@ export class MsgStore {
 
     const msgListWithHeader = [JSON.stringify(header), ...serializedMsgs];
 
+    const msgDepths = new Map<string, number>();
     const depths = msgs
       .map((m) => {
         if (m.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
@@ -1294,6 +1355,9 @@ export class MsgStore {
             }
 
             if (!Number.isNaN(d) && d > 0) {
+              if (m.messageClientId) {
+                msgDepths.set(m.messageClientId as string, d);
+              }
               return d;
             }
           } catch {
@@ -1308,6 +1372,7 @@ export class MsgStore {
     return {
       content: msgListWithHeader.join("\n"),
       depth: depths.length ? Math.max(...depths) + 1 : 1,
+      msgDepths,
     };
   }
 
@@ -1519,7 +1584,18 @@ export class MsgStore {
 
   private _onReceiveMessages(data: V2NIMMessage[]) {
     this.logger?.log("_onReceiveMessages: ", data);
+    const selectedConversation = this.rootStore.uiStore.selectedConversation;
+
     data.forEach((item) => {
+      // 如果当前处于从历史搜索跳转的状态，且收到的是当前会话的消息，则不调用addMsg
+      // 这样可以避免在历史消息和最新消息之间产生gap
+      if (
+        this.rootStore.uiStore.isJumpedFromHistory &&
+        item.conversationId === selectedConversation
+      ) {
+        this.logger?.log("_onReceiveMessages: 当前处于历史搜索跳转状态，跳过addMsg，避免gap", item);
+        return;
+      }
       this.addMsg(item.conversationId as string, [item]);
     });
     if (this.localOptions?.enableCloudConversation) {
@@ -1802,8 +1878,10 @@ export class MsgStore {
       messageClientId: `recall-${msg.messageClientId}`,
     };
 
-    // 只有 type 为 custom 和 text 的消息可以被重新编辑
+    // 只有 type 为 text 的消息可以被重新编辑，合并转发消息(custom type=101)不支持重新编辑
+    const isMergeForward = this.isChatMergedForwardMsg(msg);
     if (
+      !isMergeForward &&
       [
         V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM,
         V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT,
@@ -2252,8 +2330,11 @@ export class MsgStore {
       this.addMsg(conversationId, allMessages);
 
       // 7. 设置消息状态，表示这是通过跳转加载的消息
-      this.rootStore.uiStore.setJumpedToMessage(true);
+      this.rootStore.uiStore.setJumpedFromHistory(true);
       this.rootStore.uiStore.setTargetMessageId(targetMessage.messageClientId || "");
+
+      // 8. 🔑 拉取消息的已读回执状态
+      await this.fetchMessageReceipts(conversationId, allMessages);
 
       // 9. 重置分页状态，确保可以继续加载更多消息
       // 通知UI重置加载状态
@@ -2264,6 +2345,52 @@ export class MsgStore {
     } catch (error) {
       this.logger?.error("jumpToMessageActive failed: ", targetMessage, error as V2NIMError);
       throw error;
+    }
+  }
+
+  /**
+   * 拉取消息的已读回执状态
+   * @param conversationId - 会话ID
+   * @param messages - 需要拉取已读回执的消息列表
+   */
+  private async fetchMessageReceipts(
+    conversationId: string,
+    messages: V2NIMMessageForUI[]
+  ): Promise<void> {
+    try {
+      this.logger?.log("fetchMessageReceipts", conversationId, messages.length);
+
+      // 判断会话类型
+      const conversationType = this.nim?.conversationIdUtil?.parseConversationType(conversationId);
+
+      if (conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
+        // P2P消息: 拉取已读时间戳
+        try {
+          await this.nim?.messageService?.getP2PMessageReceipt(conversationId);
+          this.logger?.log("fetchMessageReceipts: P2P已读回执拉取成功");
+        } catch (error) {
+          this.logger?.warn("fetchMessageReceipts: P2P已读回执拉取失败", error);
+          // 已读回执拉取失败不影响主流程
+        }
+      } else if (
+        conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
+      ) {
+        // 群消息: 拉取已读/未读数
+        // 只拉取自己发送的消息的已读回执
+        const myMessages = messages.filter((msg) => msg.isSelf);
+        if (myMessages.length > 0) {
+          try {
+            await this.getTeamMsgReadsActive(myMessages, conversationId);
+            this.logger?.log("fetchMessageReceipts: 群消息已读回执拉取成功", myMessages.length);
+          } catch (error) {
+            this.logger?.warn("fetchMessageReceipts: 群消息已读回执拉取失败", error);
+            // 已读回执拉取失败不影响主流程
+          }
+        }
+      }
+    } catch (error) {
+      this.logger?.error("fetchMessageReceipts failed:", error);
+      // 已读回执拉取失败不影响主流程，不抛出异常
     }
   }
 

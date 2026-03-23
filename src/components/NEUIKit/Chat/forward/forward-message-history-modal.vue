@@ -17,7 +17,7 @@
       </div>
       <div v-else class="msg-list">
         <div v-for="(msg, index) in msgs" :key="msg.messageClientId" class="history-item">
-          <MessageItem :msg="msg" :index="index" />
+          <MessageItem :msg="msg" :index="index" :readonly="true" />
         </div>
       </div>
     </div>
@@ -31,6 +31,7 @@ import Loading from "../../CommonComponents/Loading.vue";
 import Empty from "../../CommonComponents/Empty.vue";
 import MessageItem from "../message/message-item.vue";
 import { t } from "../../utils/i18n";
+import { toast } from "../../utils/toast";
 import { getContextState } from "../../utils/init";
 import type { V2NIMMessageForUI } from "../../store/types";
 
@@ -86,14 +87,15 @@ watch(
             // 处理解析后的消息，确保它们有必要的属性用于显示
             msgs.value = parsedMsgs.map((m: any) => ({
               ...m,
-              // 确保有 senderId, 即使是合并转发中的消息
-              // 某些场景下合并转发内部消息可能缺少完整用户信息，这里可能需要补充
-              // 如果 serverExtension 中有头像和昵称，也应该被 MessageItem 使用
+              // 合并转发详情中所有消息统一靠左显示
+              isSelf: false,
             }));
           }
         }
       } catch (error) {
         console.error("Failed to load merge forward history:", error);
+        toast.error(t("getMergeForwardFailedText"));
+        emit("close");
       } finally {
         loading.value = false;
       }

@@ -178,6 +178,15 @@ export function initLocalFileProtocol(): void {
   protocol.handle(LOCAL_FILE_PROTOCOL, async (request) => {
     const filePath = fromLocalFileUrl(request.url);
 
+    // 解析 URL 中的 filename query 参数，用于确定无扩展名文件的 MIME 类型和下载文件名
+    let downloadFilename = "";
+    try {
+      const urlObj = new URL(request.url);
+      downloadFilename = urlObj.searchParams.get("filename") || "";
+    } catch {
+      // URL 解析失败时忽略
+    }
+
     try {
       // 检查文件是否存在
       if (!fs.existsSync(filePath)) {
@@ -189,7 +198,13 @@ export function initLocalFileProtocol(): void {
 
       // 获取文件信息
       const stat = fs.statSync(filePath);
-      const mimeType = getMimeType(filePath);
+      // 如果文件路径没有扩展名，尝试从 filename query 参数中获取扩展名来确定 MIME 类型
+      const fileExt = path.extname(filePath);
+      const mimeType = fileExt
+        ? getMimeType(filePath)
+        : downloadFilename
+          ? getMimeType(downloadFilename)
+          : "application/octet-stream";
 
       // 处理范围请求（用于视频/音频的分段加载）
       const rangeHeader = request.headers.get("Range");
@@ -236,14 +251,19 @@ export function initLocalFileProtocol(): void {
             },
           });
 
+          const rangeHeaders: Record<string, string> = {
+            "Content-Type": mimeType,
+            "Content-Length": String(chunkSize),
+            "Content-Range": `bytes ${start}-${end}/${stat.size}`,
+            "Accept-Ranges": "bytes",
+          };
+          if (downloadFilename) {
+            rangeHeaders["Content-Disposition"] = `inline; filename="${encodeURIComponent(downloadFilename)}"`;
+          }
+
           return new Response(readable, {
             status: 206,
-            headers: {
-              "Content-Type": mimeType,
-              "Content-Length": String(chunkSize),
-              "Content-Range": `bytes ${start}-${end}/${stat.size}`,
-              "Accept-Ranges": "bytes",
-            },
+            headers: rangeHeaders,
           });
         }
       }
@@ -251,13 +271,18 @@ export function initLocalFileProtocol(): void {
       // 普通请求：返回完整文件
       const fileBuffer = fs.readFileSync(filePath);
 
+      const responseHeaders: Record<string, string> = {
+        "Content-Type": mimeType,
+        "Content-Length": String(stat.size),
+        "Accept-Ranges": "bytes",
+      };
+      if (downloadFilename) {
+        responseHeaders["Content-Disposition"] = `inline; filename="${encodeURIComponent(downloadFilename)}"`;
+      }
+
       return new Response(fileBuffer, {
         status: 200,
-        headers: {
-          "Content-Type": mimeType,
-          "Content-Length": String(stat.size),
-          "Accept-Ranges": "bytes",
-        },
+        headers: responseHeaders,
       });
     } catch (error) {
       console.error("[LocalFileProtocol] Error reading file:", filePath, error);

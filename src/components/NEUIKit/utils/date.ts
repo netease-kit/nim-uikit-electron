@@ -129,5 +129,5 @@ export const formatDate = (time: string | number | undefined): string => {
   const isCurrentDay = isSameDay(date, now);
   const isCurrentYear = isSameYear(date, now);
 
-  return formatDateTime(date, isCurrentDay ? "HH:mm" : isCurrentYear ? "MM-DD" : "YYYY-MM");
+  return formatDateTime(date, isCurrentDay ? "HH:mm" : isCurrentYear ? "MM-DD" : "YYYY-MM-DD");
 };

@@ -1,10 +1,7 @@
 <template>
   <div v-if="visible" class="reply-msg-wrapper">
     <!-- replyMsg 不存在 说明回复的消息被删除或者撤回 -->
-    <div
-      class="reply-msg-not-find"
-      v-if="props.replyMsg?.messageClientId == 'noFind'"
-    >
+    <div class="reply-msg-not-find" v-if="props.replyMsg?.messageClientId == 'noFind'">
       <span>{{ t("replyNotFindText") }}</span>
     </div>
     <Popover
@@ -30,29 +27,16 @@
         </div>
         <MessageOneLine
           v-if="
-            replyMsg &&
-            replyMsg.messageType ===
-              V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
+            replyMsg && replyMsg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
           "
           :text="replyMsg.text"
         />
         <div class="reply-msg-type-tip" v-else>
-          {{
-            replyMsg?.messageType
-              ? `[${
-                  REPLY_MSG_TYPE_MAP[replyMsg.messageType] ||
-                  t("unknownMsgText")
-                }]`
-              : "[Unknown]"
-          }}
+          {{ replyMsg?.messageType ? `[${getReplyMsgTypeText(replyMsg)}]` : "[Unknown]" }}
         </div>
       </div>
       <template #content>
-        <div
-          v-if="replyMsg"
-          @click="(e) => e.stopPropagation()"
-          class="popover-message-content"
-        >
+        <div v-if="replyMsg" @click="(e) => e.stopPropagation()" class="popover-message-content">
           <MessageItemContent :msg="replyMsg" :showReply="false" />
         </div>
       </template>
@@ -64,7 +48,7 @@
 /** 回复消息组件 */
 import { t } from "../../utils/i18n";
 import { ref } from "vue";
-import { REPLY_MSG_TYPE_MAP } from "../../utils/constants";
+import { getReplyMsgTypeText } from "../../utils/msg";
 import type { V2NIMMessageForUI } from "../../store/types";
 import { V2NIMConst } from "../../utils/constants";
 
@@ -74,11 +58,7 @@ import MessageOneLine from "../../CommonComponents/MessageOneLine.vue";
 import Popover from "../../CommonComponents/Popover.vue";
 import MessageItemContent from "./message-item-content.vue";
 
-const props = withDefaults(
-  defineProps<{ visible: boolean; replyMsg?: V2NIMMessageForUI }>(),
-  {}
-);
-
+const props = withDefaults(defineProps<{ visible: boolean; replyMsg?: V2NIMMessageForUI }>(), {});
 // Popover 显示状态
 const popoverVisible = ref(false);
 </script>

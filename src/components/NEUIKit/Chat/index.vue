@@ -85,6 +85,7 @@
     :msg="forwardMsg"
     :isMergeForward="isMergeForward"
     @close="handleForwardModalClose"
+    @send="handleForwardSendSuccess"
   />
   <!-- 好友名片 组件 -->
   <UserCardModal
@@ -123,7 +124,7 @@ import type { V2NIMMessage, V2NIMMessageRefer } from "node-nim/types/v2_def/v2_n
 import { getFileMd5, isDiscussionFunc } from "../utils";
 import { getContextState } from "../utils/init";
 import { V2NIMConversationType, V2NIMUserStatusType } from "node-nim";
-import { getMsgContentTipByType } from "../utils/msg";
+import { getMsgContentTipByType, isMessageNoError } from "../utils/msg";
 import packageJson from "../../../../package.json";
 import sdkPkg from "node-nim/package.json";
 
@@ -267,6 +268,11 @@ const handleMergeForward = async () => {
     return;
   }
 
+  if (selectedIds.length > 100) {
+    toast.error(t("forwardMsgMax100Text"));
+    return;
+  }
+
   const msgsToForward = store?.msgStore.getMsg(store.uiStore.selectedConversation, selectedIds);
 
   if (!msgsToForward || msgsToForward.length === 0) {
@@ -276,15 +282,44 @@ const handleMergeForward = async () => {
   // Sort messages by time
   msgsToForward.sort((a, b) => (a.createTime || 0) - (b.createTime || 0));
 
-  // 序列化消息列表并上传
-  const { content: mergedMsgsTxt, depth } = store.msgStore.serializeMergeMsgs(msgsToForward, {
+  // 序列化消息列表并上传（需要先序列化以获取深度信息）
+  const {
+    content: mergedMsgsTxt,
+    depth,
+    msgDepths,
+  } = store.msgStore.serializeMergeMsgs(msgsToForward, {
     appVersion,
     sdkVersion,
   });
 
-  if (depth > 3) {
-    console.log("depth", depth);
-    toast.error(t("mergeForwardDepthLimitText") || "已达到最大合并层级");
+  // 一次性收集所有不可转发的消息：发送失败 + 层级 >= 3
+  const invalidMsgIds: string[] = [];
+  msgsToForward.forEach((msg) => {
+    const isFailed =
+      msg.sendingState === V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED ||
+      !isMessageNoError(msg.messageStatus?.errorCode);
+    const isTooDeep = (msgDepths.get(msg.messageClientId as string) ?? 0) >= 3;
+    if (isFailed || isTooDeep) {
+      if (msg.messageClientId) {
+        invalidMsgIds.push(msg.messageClientId);
+      }
+    }
+  });
+
+  if (invalidMsgIds.length > 0) {
+    invalidMsgIds.forEach((id) => {
+      store?.uiStore.unselectMessage(id);
+    });
+    toast.error(t("forwardMsgHasUnforwardableText"));
+    return;
+  }
+
+  // 检查网络状态，如果断开则提示
+  const isConnected =
+    store?.connectStore?.connectStatus ===
+    V2NIMConst.V2NIMConnectStatus.V2NIM_CONNECT_STATUS_CONNECTED;
+  if (!isConnected) {
+    toast.error(t("networkError"));
     return;
   }
 
@@ -302,9 +337,9 @@ const handleMergeForward = async () => {
       return;
     }
 
-    // 创建一个模拟的 File 对象，主要包含 path 属性
-    // 因为在 Electron 环境下，SDK 的 uploadFileActive 方法主要依赖 path
-    mergedMsgsFile = new File([""], "mergedMsgs.txt", {
+    // 创建包含实际内容的 File 对象
+    // Electron 环境下，SDK 上传依赖 path 属性，但 getFileMd5 依赖 File 内容
+    mergedMsgsFile = new File([mergedMsgsTxt], "mergedMsgs.txt", {
       type: "text/plain",
     });
 
@@ -320,7 +355,18 @@ const handleMergeForward = async () => {
     });
   }
 
-  const fileUrl = await store.storageStore.uploadFileActive(mergedMsgsFile);
+  let fileUrl: string;
+  try {
+    fileUrl = await store.storageStore.uploadFileActive(mergedMsgsFile);
+  } catch (error) {
+    console.error("合并转发上传失败:", error);
+    // 上传失败，清理临时文件
+    if (window.electronAPI?.fs && (mergedMsgsFile as any).path) {
+      await window.electronAPI.fs.deleteTempFile((mergedMsgsFile as any).path);
+    }
+    toast.error(t("networkError"));
+    return;
+  }
   const md5 = await getFileMd5(mergedMsgsFile);
 
   // 上传完成后，如果是 Electron 环境，删除临时文件
@@ -336,6 +382,7 @@ const handleMergeForward = async () => {
       const senderId = (m as any).__kit__senderId || m.senderId;
       const senderNick = store.uiStore.getAppellation({
         account: senderId,
+        ignoreAlias: true,
       });
 
       const tip = getMsgContentTipByType({
@@ -357,7 +404,7 @@ const handleMergeForward = async () => {
   const sessionName =
     convType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
       ? store.teamStore.teams.get(sessionId)?.name || sessionId
-      : store.uiStore.getAppellation({ account: sessionId });
+      : store.uiStore.getAppellation({ account: sessionId, ignoreAlias: true });
 
   const customForwardMsg = nim?.messageCreator?.createCustomMessage(
     `[${t("chatHistoryText")}]`,
@@ -386,6 +433,11 @@ const handleMergeDelete = () => {
     return;
   }
 
+  if (selectedIds.length > 50) {
+    toast.error(t("deleteMsgMax50Text"));
+    return;
+  }
+
   const msgsToDelete = store?.msgStore.getMsg(store.uiStore.selectedConversation, selectedIds);
 
   if (!msgsToDelete || msgsToDelete.length === 0) {
@@ -409,6 +461,9 @@ const handleMergeDelete = () => {
 
 const handleForwardModalClose = () => {
   showForwardModal.value = false;
+};
+
+const handleForwardSendSuccess = () => {
   if (isMergeForward.value) {
     store?.uiStore.setMultiSelectMode(false);
     isMergeForward.value = false;
@@ -518,9 +573,9 @@ const scrollToBottomAndHideNewMsgTip = async () => {
   showNewMsgTip.value = false;
 
   // 如果当前处于跳转状态，需要退出跳转状态并重新加载最新消息
-  if (store?.uiStore.isJumpedToMessage) {
+  if (store?.uiStore.isJumpedFromHistory) {
     // 退出跳转状态
-    store.uiStore.setJumpedToMessage(false);
+    store.uiStore.setJumpedFromHistory(false);
 
     // 清除当前消息并重新拉取最新消息
     if (selectedConversation.value) {
@@ -550,8 +605,8 @@ const handleBackToBottom = async () => {
   showNewMsgTip.value = false; // 清除新消息提示
 
   // 退出跳转状态
-  if (store?.uiStore.isJumpedToMessage) {
-    store.uiStore.setJumpedToMessage(false);
+  if (store?.uiStore.isJumpedFromHistory) {
+    store.uiStore.setJumpedFromHistory(false);
   }
 
   // 清除当前消息并重新拉取最新消息
@@ -688,19 +743,16 @@ const getHistory = async (endTime: number, lastMsgId?: string) => {
 
 /** 订阅在线离线状态 */
 const subscribeUserStatus = (selectedConversation: string) => {
-   const to = nim?.conversationIdUtil?.parseConversationTargetId(selectedConversation) as string
+  const to = nim?.conversationIdUtil?.parseConversationTargetId(selectedConversation) as string;
 
-  const conversationType = nim?.conversationIdUtil?.parseConversationType(
-    selectedConversation
-  );
+  const conversationType = nim?.conversationIdUtil?.parseConversationType(selectedConversation);
   if (
     store?.localOptions.loginStateVisible &&
-    conversationType ===
-      V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
+    conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
   ) {
-    store.subscriptionStore.subscribeUserStatusActive([to])
+    store.subscriptionStore.subscribeUserStatusActive([to]);
   }
-}
+};
 
 /** 加载更多消息 - 基于第一条消息往上查询15条 */
 const loadMoreMsgs = (firstMsg: any) => {
@@ -713,7 +765,7 @@ const loadMoreMsgs = (firstMsg: any) => {
   }
 };
 
-/** 加载更多新消息（跳转状态下向下滚动） - 基于最后一条消息往下查询15条 */
+/** 加载更多新消息（跳转状态下向下滚动） - 基于最后一条消息往下查询,支持自动填充gap */
 const loadNextMsgs = async (lastMsg: V2NIMMessage) => {
   console.log("loadNextMsgs 被调用，最后一条消息:", lastMsg?.text || lastMsg?.messageType);
   if (!selectedConversation.value || !lastMsg || loadingMore.value) {
@@ -749,7 +801,12 @@ const loadNextMsgs = async (lastMsg: V2NIMMessage) => {
       // 判断是否已经加载完毕：实际返回数量小于预期数量
       if (nextMsgs.length < HISTORY_LIMIT) {
         console.log("实际返回消息数量小于预期，已无更多消息，退出跳转状态");
-        store?.uiStore.setJumpedToMessage(false);
+        store?.uiStore.setJumpedFromHistory(false);
+
+        // 🔑 已经加载到最新消息，隐藏新消息提醒
+        showNewMsgTip.value = false;
+        console.log("已加载到最新消息，隐藏新消息提醒");
+
         return;
       }
 
@@ -758,7 +815,11 @@ const loadNextMsgs = async (lastMsg: V2NIMMessage) => {
     } else {
       // 没有更多新消息，直接退出跳转状态
       console.log("没有更多新消息，退出跳转状态");
-      store?.uiStore.setJumpedToMessage(false);
+      store?.uiStore.setJumpedFromHistory(false);
+
+      // 🔑 已经加载到最新消息，隐藏新消息提醒
+      showNewMsgTip.value = false;
+      console.log("已加载到最新消息，隐藏新消息提醒");
     }
   } catch (error) {
     console.error("Failed to load next messages:", error);
@@ -807,7 +868,7 @@ const resetState = () => {
 
   // 重置跳转相关状态
   if (store?.uiStore) {
-    store.uiStore.clearJumpedToMessage(); // 清除跳转消息状态
+    store.uiStore.clearJumpedFromHistory(); // 清除跳转消息状态
   }
 
   // 重置消息列表组件的加载状态
@@ -941,10 +1002,28 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
               }
             });
           }
-          replyMsgsMap.value = { ...replyMsgsMapForExt };
+          // 🔑 修复: 智能合并,保留已有的正确数据
+          const mergedMap = { ...replyMsgsMap.value };
+          Object.keys(replyMsgsMapForExt).forEach((key) => {
+            const newValue = replyMsgsMapForExt[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+          replyMsgsMap.value = mergedMap;
         })
         .catch(() => {
-          replyMsgsMap.value = { ...replyMsgsMapForExt };
+          // 🔑 修复: 即使失败也要智能合并
+          const mergedMap = { ...replyMsgsMap.value };
+          Object.keys(replyMsgsMapForExt).forEach((key) => {
+            const newValue = replyMsgsMapForExt[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+          replyMsgsMap.value = mergedMap;
         });
     }
 
@@ -960,11 +1039,30 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
         return true;
       });
       if (!deduped.length) {
-        // 本轮没有新增需要拉取的引用消息，直接合并当前解析结果即可
-        replyMsgsMap.value = {
-          ...replyMsgsMapForExt,
-          ...replyMsgsMapForThreadReply,
-        };
+        // 本轮没有新增需要拉取的引用消息
+        // 🔑 修复: 智能合并,不要用 noFind 覆盖已经成功获取的回复消息
+        const mergedMap = { ...replyMsgsMap.value };
+
+        // 只有当新数据不是 noFind 或者旧数据不存在时,才更新
+        Object.keys(replyMsgsMapForExt).forEach((key) => {
+          const newValue = replyMsgsMapForExt[key];
+          const oldValue = mergedMap[key];
+          // 如果新值有效(不是noFind),或者旧值不存在,则使用新值
+          if (newValue?.messageClientId !== "noFind" || !oldValue) {
+            mergedMap[key] = newValue;
+          }
+        });
+
+        Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
+          const newValue = replyMsgsMapForThreadReply[key];
+          const oldValue = mergedMap[key];
+          // 如果新值有效(不是noFind),或者旧值不存在,则使用新值
+          if (newValue?.messageClientId !== "noFind" || !oldValue) {
+            mergedMap[key] = newValue;
+          }
+        });
+
+        replyMsgsMap.value = mergedMap;
         return;
       }
 
@@ -978,22 +1076,70 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
               }
             });
           }
-          replyMsgsMap.value = {
-            ...replyMsgsMapForExt,
-            ...replyMsgsMapForThreadReply,
-          };
+          // 🔑 修复: 智能合并两个map,避免 noFind 覆盖已有数据
+          const mergedMap = { ...replyMsgsMap.value };
+
+          Object.keys(replyMsgsMapForExt).forEach((key) => {
+            const newValue = replyMsgsMapForExt[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+
+          Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
+            const newValue = replyMsgsMapForThreadReply[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+
+          replyMsgsMap.value = mergedMap;
         })
         .catch(() => {
-          replyMsgsMap.value = {
-            ...replyMsgsMapForExt,
-            ...replyMsgsMapForThreadReply,
-          };
+          // 🔑 修复: 失败时也要智能合并
+          const mergedMap = { ...replyMsgsMap.value };
+
+          Object.keys(replyMsgsMapForExt).forEach((key) => {
+            const newValue = replyMsgsMapForExt[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+
+          Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
+            const newValue = replyMsgsMapForThreadReply[key];
+            const oldValue = mergedMap[key];
+            if (newValue?.messageClientId !== "noFind" || !oldValue) {
+              mergedMap[key] = newValue;
+            }
+          });
+
+          replyMsgsMap.value = mergedMap;
         });
     } else {
-      replyMsgsMap.value = {
-        ...replyMsgsMapForExt,
-        ...replyMsgsMapForThreadReply,
-      };
+      // 🔑 修复: 同样需要智能合并,避免 noFind 覆盖已有的正确数据
+      const mergedMap = { ...replyMsgsMap.value };
+
+      Object.keys(replyMsgsMapForExt).forEach((key) => {
+        const newValue = replyMsgsMapForExt[key];
+        const oldValue = mergedMap[key];
+        if (newValue?.messageClientId !== "noFind" || !oldValue) {
+          mergedMap[key] = newValue;
+        }
+      });
+
+      Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
+        const newValue = replyMsgsMapForThreadReply[key];
+        const oldValue = mergedMap[key];
+        if (newValue?.messageClientId !== "noFind" || !oldValue) {
+          mergedMap[key] = newValue;
+        }
+      });
+
+      replyMsgsMap.value = mergedMap;
     }
   }
 };
@@ -1058,7 +1204,7 @@ const msgsWatch = autorun(() => {
 
 /**监听跳转状态，控制回到底部按钮的显示 */
 const jumpStateWatch = autorun(() => {
-  const isJumped = store?.uiStore.isJumpedToMessage || false;
+  const isJumped = store?.uiStore.isJumpedFromHistory || false;
 
   if (isJumped) {
     // 如果是跳转状态，检查最新消息是否在可视区域
@@ -1133,13 +1279,28 @@ onMounted(() => {
   //@ts-ignore
   emitter.on(events.GET_NEXT_MSG, loadNextMsgs);
 
+  // 监听关闭新消息提醒事件
+  emitter.on(events.CLOSE_NEW_MSG_TIP, () => {
+    showNewMsgTip.value = false;
+  });
+
   // 监听滚动到底部事件，隐藏新消息提醒
   emitter.on(events.ON_SCROLL_BOTTOM, async () => {
-    showNewMsgTip.value = false;
+    // 🔑 修复: 只有在非历史跳转状态下才隐藏新消息提醒
+    // 在历史跳转状态下,用户向下滚动只是加载gap消息,不应该隐藏提醒
+    // 只有当加载到最新消息(isJumpedFromHistory=false)或手动点击提醒时才隐藏
+    const isInHistoryJumpState = store?.uiStore.isJumpedFromHistory || false;
+
+    if (!isInHistoryJumpState) {
+      // 只在非历史跳转状态下才隐藏新消息提醒
+      showNewMsgTip.value = false;
+    } else {
+      console.log("当前处于历史跳转状态,保持新消息提醒显示");
+    }
 
     // 在跳转状态下，只隐藏新消息提醒，不执行回到底部逻辑
     // 用户可以继续滚动加载更多消息
-    if (!store?.uiStore.isJumpedToMessage) {
+    if (!store?.uiStore.isJumpedFromHistory) {
       // 只在非跳转状态下才滚动到底部
       nextTick(() => {
         if (messageListRef.value) {
@@ -1185,6 +1346,7 @@ onUnmounted(() => {
   emitter.off(events.GET_HISTORY_MSG, loadMoreMsgs);
   //@ts-ignore
   emitter.off(events.GET_NEXT_MSG, loadNextMsgs);
+  emitter.off(events.CLOSE_NEW_MSG_TIP);
   emitter.off(events.ON_SCROLL_BOTTOM);
   emitter.off(events.CONFIRM_FORWARD_MSG);
   emitter.off(events.AVATAR_CLICK);

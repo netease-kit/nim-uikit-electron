@@ -19,14 +19,17 @@ const props = withDefaults(
   defineProps<{
     account?: string;
     to?: string;
+    readonly?: boolean;
   }>(),
   {
     account: "",
     to: "",
+    readonly: false,
   }
 );
 
 const handleAvatarClick = (event: Event) => {
+  if (props.readonly) return;
   // 阻止事件冒泡，防止触发父容器的事件
   event.stopPropagation();
   event.preventDefault();
@@ -37,5 +40,9 @@ const handleAvatarClick = (event: Event) => {
 <style scoped>
 .message-avatar {
   cursor: pointer;
+}
+
+.message-avatar.readonly {
+  cursor: default;
 }
 </style>

@@ -222,16 +222,16 @@ const showSessionUnread = computed(() => {
 const onlineStatusWatch = autorun(() => {
   if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
     const stateMap = store?.subscriptionStore.stateMap;
-    const to =  nim?.conversationIdUtil?.parseConversationTargetId(
-    props.conversation.conversationId || ""
-  ) as string
+    const to = nim?.conversationIdUtil?.parseConversationTargetId(
+      props.conversation.conversationId || ""
+    ) as string;
 
     if (store?.localOptions?.loginStateVisible) {
       onlineStatus.value =
         stateMap?.get(to)?.statusType === V2NIMUserStatusType.V2NIM_USER_STATUS_TYPE_LOGIN;
     } else {
       onlineStatus.value = false;
-    }    
+    }
   }
 });
 
@@ -356,7 +356,7 @@ onUnmounted(() => {
   font-size: 12px;
   color: #999999;
   text-align: right;
-  width: 41px;
+  width: 60px;
   flex-shrink: 0;
   white-space: nowrap;
 }

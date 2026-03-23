@@ -1209,6 +1209,8 @@ export const events: { [key: string]: string } = {
   AVATAR_CLICK: "avatarClick",
   // 重置加载更多消息状态
   RESET_LOADING_MORE_MESSAGES: "resetLoadingMoreMessages",
+  // 滚动指定消息到视野内
+  SCROLL_MSG_INTO_VIEW: "scrollMsgIntoView",
 };
 
 export const HISTORY_LIMIT = 15;
@@ -1245,7 +1247,7 @@ export const g2StatusMap: any = {
 
 export const msgRecallTime = 2 * 60 * 1000;
 
-export const APP_KEY = "";
+export const APP_KEY = "3e215d27b6a6a9e27dad7ef36dd5b65c";
 
 export const NEUIKIT_VERSION = "10.1.0-beta";
 

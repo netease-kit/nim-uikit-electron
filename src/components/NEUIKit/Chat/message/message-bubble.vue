@@ -1,5 +1,5 @@
 <template>
-  <MessageDropdown placement="bottom" trigger="contextmenu">
+  <MessageDropdown placement="bottom" trigger="contextmenu" :disabled="props.readonly">
     <div class="msg-bubble" :style="{ justifyContent: !msg.isSelf ? 'flex-start' : 'flex-end' }">
       <div v-if="props.msg.isSelf" class="msg-status-wrapper">
         <MessageIsRead
@@ -106,7 +106,7 @@
 
 <script lang="ts" setup>
 /** 消息气泡 */
-import { onMounted, onUnmounted, ref, computed } from "vue";
+import { onMounted, onUnmounted, ref, computed, nextTick } from "vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import { events } from "../../utils/constants";
 import { isMessageNoError } from "../../utils/msg";
@@ -131,6 +131,7 @@ const props = withDefaults(
     tooltipVisible?: boolean;
     bgVisible?: boolean;
     placement?: string;
+    readonly?: boolean;
   }>(),
   {}
 );
@@ -258,6 +259,10 @@ const handleMultiSelectMsg = () => {
   store?.uiStore.setMultiSelectMode(true);
   if (props.msg.messageClientId) {
     store?.uiStore.selectMessage(props.msg.messageClientId);
+    // 进入多选模式后，将当前消息滚动到视野内，避免被底部操作栏遮挡
+    nextTick(() => {
+      emitter.emit(events.SCROLL_MSG_INTO_VIEW, props.msg.messageClientId);
+    });
   }
 };
 
@@ -583,9 +588,9 @@ onUnmounted(() => {
   font-size: 14px;
   cursor: pointer;
   color: rgba(0, 0, 0, 0.85);
-  cursor: pointer;
   display: flex;
   align-items: center;
+  white-space: nowrap;
 }
 
 .msg-dropdown-item:hover {

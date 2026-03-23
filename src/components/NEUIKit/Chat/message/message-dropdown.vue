@@ -35,12 +35,14 @@ const props = withDefaults(
     lazy?: boolean;
     dropdownStyle?: CSSProperties;
     placement?: "top" | "bottom";
+    disabled?: boolean;
   }>(),
   {
     trigger: "contextmenu",
     lazy: true,
     dropdownStyle: () => ({}),
     placement: "bottom",
+    disabled: false,
   }
 );
 
@@ -95,6 +97,10 @@ const handleClick = (event: MouseEvent) => {
 
 // 处理右键菜单事件
 const handleContextMenu = async (event: MouseEvent) => {
+  if (props.disabled) {
+    event.preventDefault();
+    return;
+  }
   if (
     props.trigger === "contextmenu" ||
     props.trigger === "click" ||
@@ -272,6 +278,8 @@ onUnmounted(() => {
   box-shadow: 0 2px 12px 0 rgba(0, 0, 0, 0.1);
   padding: 4px 0px;
   min-width: 70px;
+  width: max-content;
+  white-space: nowrap;
   z-index: 99999; /* 确保样式中也有高z-index */
 }
 </style>

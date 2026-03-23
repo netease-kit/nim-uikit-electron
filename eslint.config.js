@@ -20,7 +20,8 @@ export default [{
     '@typescript-eslint/semi': ['error', 'always'],
     'quotes': ['error', 'double', { 'avoidEscape': true }],
     'vue/html-quotes': ['error', 'double'],
-    'vue/multi-word-component-names': 'off'
+    'vue/multi-word-component-names': 'off',
+    'vue/no-multiple-template-root': 'off'
   },
   ignores: [
     '**/dist',

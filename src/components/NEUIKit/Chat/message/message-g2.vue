@@ -1,5 +1,8 @@
 <template>
-  <div class="g2-message-wrapper">
+  <div v-if="readonly" class="unknown-msg">
+    [{{ attachment?.type == 1 ? t("audioCallText") : t("videoCallText") }}]
+  </div>
+  <div v-else class="g2-message-wrapper">
     <Icon :type="iconType" :size="24"></Icon>
     <div class="g2-message-status">{{ status }}</div>
     <div v-if="duration" class="g2-message-duration">{{ duration }}</div>
@@ -11,8 +14,12 @@
 import Icon from "../../CommonComponents/Icon.vue";
 import { convertSecondsToTime } from "../../utils";
 import { g2StatusMap } from "../../utils/constants";
+import { t } from "../../utils/i18n";
 import type { V2NIMMessageForUI } from "../../store/types";
-const props = withDefaults(defineProps<{ msg: V2NIMMessageForUI }>(), {});
+const props = withDefaults(
+  defineProps<{ msg: V2NIMMessageForUI; readonly?: boolean }>(),
+  { readonly: false }
+);
 
 const attachment = props.msg.attachment as any;
 // 音视频消息时长
@@ -24,6 +31,12 @@ const iconType = attachment?.type == 1 ? "icon-yuyin8" : "icon-shipin8";
 </script>
 
 <style scoped>
+/* 只读模式文本标签 */
+.unknown-msg {
+  font-size: 14px;
+  color: #000000;
+}
+
 /* 音视频消息容器 */
 .g2-message-wrapper {
   display: flex;

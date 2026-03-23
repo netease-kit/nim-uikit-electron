@@ -36,6 +36,7 @@
       V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CALL
     "
     :msg="props.msg"
+    :readonly="props.readonly"
   />
   <!-- 文件消息 -->
   <MessageFile
@@ -52,6 +53,7 @@
       V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_AUDIO
     "
     :msg="props.msg"
+    :readonly="props.readonly"
   />
   <!-- 合并转发消息 -->
   <MessageMergeForward
@@ -90,9 +92,11 @@ const props = withDefaults(
     msg: V2NIMMessageForUI & { timeValue?: number };
     replyMsg?: V2NIMMessageForUI;
     showReply?: boolean;
+    readonly?: boolean;
   }>(),
   {
     showReply: true,
+    readonly: false,
   }
 );
 </script>

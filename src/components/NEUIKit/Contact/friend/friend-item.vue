@@ -1,5 +1,5 @@
 <template>
-  <div class="friend-item" @click="() => emit('click', friend)">
+  <div :key="friend.updateTime" class="friend-item" @click="() => emit('click', friend)">
     <Avatar :account="friend.accountId" />
     <div class="friend-name">
       {{ friend.appellation }}
@@ -21,7 +21,7 @@ const { store } = getContextState();
 
 const emit = defineEmits(["click"]);
 const props = defineProps<{
-  friend: { accountId: string; appellation: string };
+  friend: { accountId: string; appellation: string; updateTime: string };
 }>();
 const friend = props.friend;
 

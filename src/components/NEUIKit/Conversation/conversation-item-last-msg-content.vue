@@ -48,7 +48,7 @@
         V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM
       "
     >
-      {{ props.lastMessage.text || translateMsg("customMsgText") }}
+      {{ isMergeForward ? translateMsg("chatHistoryText") : (props.lastMessage.text || translateMsg("customMsgText")) }}
     </div>
     <div
       v-else-if="
@@ -180,11 +180,40 @@ const textArr = computed(() => {
   return parseTextWithEmoji(props.lastMessage.text as string);
 });
 
+// 判断是否是合并转发消息 (attachment.type === 101)
+const isMergeForwardMsg = (lastMessage: any): boolean => {
+  if (lastMessage?.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM) {
+    return false;
+  }
+  try {
+    let rawAttachment: any = lastMessage.attachment;
+    if (rawAttachment?.raw) {
+      rawAttachment = rawAttachment.raw;
+    }
+    if (typeof rawAttachment === "string") {
+      rawAttachment = JSON.parse(rawAttachment);
+    }
+    if (rawAttachment && rawAttachment.type === 101) {
+      return true;
+    }
+  } catch {}
+  try {
+    const textPayload = JSON.parse(lastMessage.text || "{}");
+    if (textPayload?.type === 101) {
+      return true;
+    }
+  } catch {}
+  return false;
+};
+
+const isMergeForward = computed(() => isMergeForwardMsg(props.lastMessage));
+
 const translateMsg = (key: string): string => {
   const text =
     {
       textMsgText: t("textMsgText"),
       customMsgText: t("customMsgText"),
+      chatHistoryText: t("chatHistoryText"),
       audioMsgText: t("audioMsgText"),
       videoMsgText: t("videoMsgText"),
       fileMsgText: t("fileMsgText"),

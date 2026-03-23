@@ -185,7 +185,7 @@
       <div class="send-to-container">
         <div class="send-to-header">{{ t("sendToText") }}</div>
         <div class="selected-items">
-          <div v-if="selectedItem" class="selected-item">
+          <div v-if="selectedItem" :key="selectedItem.id" class="selected-item">
             <Avatar :account="selectedItem.id" :avatar="selectedItem.avatar" size="32" />
             <span class="selected-name">{{ selectedItem.name }}</span>
           </div>
@@ -227,6 +227,7 @@ import { getContextState } from "../../utils/init";
 import type { V2NIMConversationType } from "node-nim";
 import type { V2NIMMessage, V2NIMTeam } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { handleJumpStateBeforeSend } from "../../utils/jump-state";
+import { friendGroupByPy } from "../../utils/friend";
 const props = withDefaults(
   defineProps<{
     visible: boolean;
@@ -322,6 +323,7 @@ const handleForwardConfirm = async () => {
           }
         }
         toast.success(t("forwardSuccessText"));
+        emit("send");
       })
       .catch(() => {
         toast.error(t("forwardFailedText"));
@@ -364,8 +366,16 @@ const friendListWatch = autorun(() => {
     }));
 
   if (data?.length) {
+    // 按拼音排序，与通讯录好友列表顺序保持一致
+    const sortedData = friendGroupByPy(
+      data.filter(
+        (f): f is { accountId: string; appellation: string } => !!f.accountId
+      ),
+      { firstKey: "appellation" },
+      false
+    );
     //@ts-ignore
-    friendList.value = data;
+    friendList.value = sortedData.flatMap((group) => group.data);
   }
 });
 
@@ -383,7 +393,7 @@ const recentConversationListWatch = autorun(() => {
     : [...(store?.uiStore?.localConversations?.values() || [])];
 
   if (conversations?.length) {
-    recentList.value = conversations.map((item) => ({
+    recentList.value = conversations.slice(0, 100).map((item) => ({
       name: item.name || item.conversationId,
       avatar: item.avatar,
       type: item.type,
@@ -667,6 +677,9 @@ watch(
   margin-left: 12px;
   flex: 1;
   min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .item-name {

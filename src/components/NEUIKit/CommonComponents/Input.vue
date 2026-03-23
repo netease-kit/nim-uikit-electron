@@ -19,6 +19,8 @@
       @focus="handleFocus"
       @blur="handleBlur"
       @keypress="handleKeypress"
+      @compositionstart="handleCompositionStart"
+      @compositionend="handleCompositionEnd"
     />
     <span
       class="input-clear"
@@ -113,7 +115,21 @@ watch(
   { immediate: true }
 );
 
+const isComposing = ref(false);
+
+const handleCompositionStart = () => {
+  isComposing.value = true;
+};
+
+const handleCompositionEnd = (event: CompositionEvent) => {
+  isComposing.value = false;
+  const target = event.target as HTMLInputElement;
+  emit("update:modelValue", target.value);
+  emit("input", event);
+};
+
 const handleInput = (event: Event) => {
+  if (isComposing.value) return;
   const target = event.target as HTMLInputElement;
   emit("update:modelValue", target.value);
   emit("input", event);
