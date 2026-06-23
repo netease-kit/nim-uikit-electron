@@ -48,8 +48,10 @@ VITE_NIM_TOKEN=你的登录令牌
 
 ## 项目运行
 
+```bash
 npm install
 npm run dev
+```
 
 ## 鸿蒙产物构建
 
@@ -59,8 +61,6 @@ npm run dev
 npm ci
 npm run build:ohos
 ```
-
-CI 中的 `ohos` 任务也采用相同流程：进入 `im-kit-electron-ui` 后先执行 `npm ci`，再执行 `npm run build:ohos`。构建脚本会针对 `node-nim` 执行鸿蒙平台原生重建，构建产物会输出到 `release` 目录，产物类型为 `.hap`。
 
 如需对鸿蒙产物签名，可以在 `ohos-builder.json5` 的 `signing` 中配置签名信息：
 
