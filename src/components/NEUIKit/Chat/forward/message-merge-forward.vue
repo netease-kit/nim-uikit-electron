@@ -5,8 +5,14 @@
       <span v-if="titleSuffix" class="title-suffix">&nbsp;{{ titleSuffix }}</span>
       <span v-else>{{ titleName }}</span>
     </div>
-    <div class="msg-merge-forward-content">
-      <div v-for="(item, index) in abstracts" :key="index" class="msg-merge-forward-item">
+    <div class="msg-merge-forward-content" ref="contentRef">
+      <div
+        v-for="(item, index) in displayAbstracts"
+        :key="index"
+        v-show="shouldShow(index)"
+        class="msg-merge-forward-item"
+        :style="{ '-webkit-line-clamp': getMaxLines(index) }"
+      >
         <span class="sender">{{ item.senderNick }}: </span>
         <span class="text">{{ item.content }}</span>
       </div>
@@ -24,7 +30,7 @@
 </template>
 
 <script lang="ts" setup>
-import { computed, ref } from 'vue';
+import { computed, ref, watch, nextTick, onMounted } from 'vue';
 import { t } from '../../utils/i18n';
 import type { V2NIMMessageForUI } from '../../store/types';
 import ForwardMessageHistoryModal from '../forward/forward-message-history-modal.vue';
@@ -119,6 +125,77 @@ const abstracts = computed<AbstractItem[]>(() => {
   }));
 });
 
+// 最多显示 3 条外露消息
+const displayAbstracts = computed(() => abstracts.value.slice(0, 3));
+
+const MAX_TOTAL_LINES = 3;
+// 每条消息的实际分配行数
+const lineClamps = ref<number[]>([]);
+const contentRef = ref<HTMLElement | null>(null);
+// 是否已完成首次测量
+const measured = ref(false);
+
+const recalcLineClamps = async () => {
+  // 等待 DOM 渲染
+  await nextTick();
+  await nextTick();
+  const container = contentRef.value;
+  if (!container) return;
+
+  const items = container.querySelectorAll('.msg-merge-forward-item') as NodeListOf<HTMLElement>;
+  const total = items.length;
+  if (total === 0) return;
+
+  const newClamps: number[] = [];
+  let remaining = MAX_TOTAL_LINES;
+
+  for (let i = 0; i < total; i++) {
+    const el = items[i];
+    // 确保元素可见以便测量
+    const prevDisplay = el.style.display;
+    el.style.display = '';
+    el.style.webkitLineClamp = 'unset';
+
+    const computedStyle = getComputedStyle(el);
+    const lineHeight = parseFloat(computedStyle.lineHeight) || (parseFloat(computedStyle.fontSize) * 1.6);
+    const naturalLines = Math.max(1, Math.round(el.scrollHeight / lineHeight));
+
+    // 分配行数：min(自然行数, 剩余行数)
+    const allocated = Math.min(naturalLines, Math.max(0, remaining));
+    newClamps.push(allocated);
+    remaining -= allocated;
+
+    // 恢复
+    el.style.display = prevDisplay;
+    el.style.webkitLineClamp = '';
+  }
+
+  lineClamps.value = newClamps;
+  measured.value = true;
+};
+
+const getMaxLines = (index: number): number => {
+  // 测量完成前，所有消息都可见（不限制行数），以便 DOM 能正确测量
+  if (!measured.value) return MAX_TOTAL_LINES;
+  return lineClamps.value[index] ?? 0;
+};
+
+// 是否显示该条消息
+const shouldShow = (index: number): boolean => {
+  if (!measured.value) return true; // 测量前全部可见
+  return (lineClamps.value[index] ?? 0) > 0;
+};
+
+watch(displayAbstracts, () => {
+  measured.value = false;
+  lineClamps.value = [];
+  recalcLineClamps();
+}, { immediate: true });
+
+onMounted(() => {
+  recalcLineClamps();
+});
+
 </script>
 
 <style scoped>
@@ -163,7 +240,9 @@ const abstracts = computed<AbstractItem[]>(() => {
   line-height: 1.6;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  word-break: break-all;
 }
 
 .msg-merge-forward-item .sender {

@@ -53,15 +53,16 @@
 </template>
 
 <script lang="ts" setup>
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed } from "vue";
 import i18n from "../i18n/zh-cn";
 import { getLoginSmsCode, loginRegisterByCode } from "../utils/api";
 import FormInput from "./form-input.vue";
 import { showToast } from "../../utils/toast";
 import { initIMUIKit } from "../../utils/init";
-import { APP_KEY } from "../../utils/constants";
 import { useRouter } from "vue-router";
 import storageManager from "../../utils/storage";
+import { appConfig, getSmsApiBaseUrl } from "../../../../config/appConfig";
+import { t } from "../../utils/i18n";
 
 const router = useRouter();
 
@@ -86,23 +87,6 @@ const loginForm = reactive({
   smsCode: "",
 });
 
-// API 环境配置
-const apiEnv = ref<"prod" | "qa">("prod");
-
-onMounted(async () => {
-  // 获取 API 环境配置
-  const envValue = await storageManager.getItemAsync("smsApiEnv");
-  if (envValue === "qa" || envValue === "prod") {
-    apiEnv.value = envValue;
-  }
-});
-
-const getLoginUrl = () => {
-  const DEV_SMS_API_URL = "https://yiyong-user-center-qa.netease.im";
-  const PROD_SMS_API_URL = "https://yiyong-user-center.netease.im";
-  return apiEnv.value === "qa" ? DEV_SMS_API_URL : PROD_SMS_API_URL;
-};
-
 const smsText = computed(() => {
   if (smsCount.value > 0 && smsCount.value < 60) {
     return smsCount.value + i18n.smsCodeBtnTitleCount;
@@ -121,7 +105,11 @@ async function startSmsCount() {
     return;
   }
   try {
-    await getLoginSmsCode({ mobile: loginForm.mobile, baseUrl: getLoginUrl() });
+    await getLoginSmsCode({
+      appKey: appConfig.appKey,
+      mobile: loginForm.mobile,
+      baseUrl: getSmsApiBaseUrl(),
+    });
   } catch (error: any) {
     let msg = error.errMsg || error.msg || error.message || i18n.smsCodeFailMsg;
     if (msg.startsWith("request:fail")) {
@@ -162,13 +150,14 @@ async function submitLoginForm() {
   try {
     const res = await loginRegisterByCode({
       ...loginForm,
-      baseUrl: getLoginUrl(),
+      appKey: appConfig.appKey,
+      baseUrl: getSmsApiBaseUrl(),
     });
 
     // 使用统一存储服务保存登录信息
     await storageManager.saveLoginInfo(res.imAccid, res.imToken);
 
-    const { nim } = await initIMUIKit(APP_KEY);
+    const { nim } = await initIMUIKit(appConfig.appKey);
 
     nim?.loginService
       ?.login(res.imAccid, res.imToken, {})
@@ -180,7 +169,7 @@ async function submitLoginForm() {
         console.log("login error", error);
         if (error.code === 102422) {
           showToast({
-            message: "当前账号已被封禁",
+            message: t("accountBannedText"),
             type: "info",
           });
           await storageManager.clearLoginInfo();

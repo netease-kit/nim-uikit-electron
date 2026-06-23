@@ -20,16 +20,29 @@
 <script lang="ts" setup>
 /** 表情面板 */
 import { emojiMap } from "../../utils/emoji";
+import { getEmojiIndexByIconType } from "../../utils/emoji";
 import Icon from "../../CommonComponents/Icon.vue";
+import type { EmojiPickItem } from "../../store/types";
 
 // 表情数组
 const emojiArr = Object.keys(emojiMap);
 
-const emit = defineEmits(["emojiClick"]);
+const emit = defineEmits<{
+  (event: "emojiClick", emoji: EmojiPickItem): void;
+}>();
 
 // 点击表情
-const handleEmojiClick = (emoji: any) => {
-  emit("emojiClick", emoji);
+const handleEmojiClick = (emoji: { key: string; type: string }) => {
+  const index = getEmojiIndexByIconType(emoji.type);
+
+  if (!index) {
+    return;
+  }
+
+  emit("emojiClick", {
+    ...emoji,
+    index,
+  });
 };
 </script>
 
@@ -37,6 +50,7 @@ const handleEmojiClick = (emoji: any) => {
 .msg-face-wrapper {
   box-sizing: border-box;
   width: 410px;
+  max-width: 100%;
   height: 320px;
   background-color: #fff;
   border-radius: 6px;

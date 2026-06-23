@@ -133,6 +133,7 @@ export const EMOJI_ICON_MAP_CONFIG: IKeyMap = {
   "[火箭]": "icon-a-67",
   "[救护车]": "icon-a-68",
   "[便便]": "icon-a-70",
+  "[眼睛]": "icon-a-71",
 };
 
 export function replaceEmoji(text: string, emojiMap?: string[]) {
@@ -205,6 +206,7 @@ export function replaceEmoji(text: string, emojiMap?: string[]) {
     "[Rocket]": "[火箭]",
     "[Ambulance]": "[救护车]",
     "[Poop]": "[便便]",
+    "[Eyes]": "[眼睛]",
   };
 
   const emojiMapConfig: any = emojiMap || defaultEmojiMap;
@@ -299,6 +301,7 @@ export const handleEmojiTranslate = (t: any) => {
     [t("Rocket")]: "icon-a-67",
     [t("Ambulance")]: "icon-a-68",
     [t("Poop")]: "icon-a-70",
+    [t("Eyes")]: "icon-a-71",
   };
 
   const INPUT_EMOJI_SYMBOL_REG = new RegExp(

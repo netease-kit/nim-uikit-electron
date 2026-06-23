@@ -34,12 +34,9 @@
       class="msg-image"
       :src="localThumbPath || thumbImageUrl || imageUrl || msg.previewImg"
     />
-    <!-- 发送失败状态 -->
+    <!-- 其他状态（发送失败、敏感词等）：兜底显示预览图 -->
     <img
-      v-else-if="
-        msg.sendingState ==
-        V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED
-      "
+      v-else
       class="msg-image"
       :src="msg.previewImg || thumbImageUrl || imageUrl"
     />

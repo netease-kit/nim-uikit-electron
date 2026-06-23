@@ -1,0 +1,13 @@
+{
+  // 推荐安装的扩展
+  "recommendations": [
+    "Vue.volar",
+    "Vue.vscode-typescript-vue-plugin",
+    "dbaeumer.vscode-eslint",
+    "EditorConfig.EditorConfig"
+  ],
+  // 不推荐的扩展（建议卸载）
+  "unwantedRecommendations": [
+    "octref.vetur"
+  ]
+}

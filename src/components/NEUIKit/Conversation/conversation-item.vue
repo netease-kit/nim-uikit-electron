@@ -16,7 +16,9 @@
             <div class="dot" v-if="isMute"></div>
             <div class="badge" v-else>{{ unread }}</div>
           </div>
-          <Avatar size="36" :account="to" :avatar="teamAvatar" />
+          <div class="conversation-avatar" @click="handleAvatarClick">
+            <Avatar size="36" :account="to" :avatar="conversationAvatar" />
+          </div>
           <!-- 用户在线离线状态 -->
           <div
             v-if="
@@ -47,10 +49,13 @@
                 {{ "[" + t("someoneText") + "@" + t("meText") + "]" }}
               </span>
               <ConversationItemIsRead v-if="showSessionUnread" :conversation="props.conversation" />
-              <span v-if="props.conversation.lastMessage" class="conversation-item-desc-content">
-                <LastMsgContent :lastMessage="props.conversation.lastMessage" />
-              </span>
+            <span v-if="isAIBotTopicConversation" class="conversation-item-topic-tag">
+              {{ t("topicSubsessionTag") }}
             </span>
+            <span v-if="props.conversation.lastMessage" class="conversation-item-desc-content">
+              <LastMsgContent :lastMessage="props.conversation.lastMessage" />
+            </span>
+          </span>
             <div class="conversation-item-state">
               <Icon
                 v-if="isMute"
@@ -88,13 +93,14 @@ import { ref, onUnmounted } from "vue";
 import { computed } from "vue";
 import { t } from "../utils/i18n";
 import { formatDate } from "../utils/date";
-import { V2NIMConst, V2NIMUserStatusType } from "../utils/constants";
+import { V2NIMConst } from "../utils/constants";
 import type { V2NIMConversationForUI, V2NIMLocalConversationForUI } from "../store/types";
 import ConversationItemIsRead from "./conversation-item-read.vue";
 import LastMsgContent from "./conversation-item-last-msg-content.vue";
 import Dropdown from "../CommonComponents/Dropdown.vue";
 import { getContextState } from "../utils/init";
 import { autorun } from "mobx";
+import { isUserStatusOnline } from "../utils/user-status";
 
 const props = withDefaults(
   defineProps<{
@@ -108,7 +114,7 @@ const { nim, store } = getContextState();
 
 const loginStateVisible = store?.localOptions.loginStateVisible;
 
-const emit = defineEmits(["click", "delete", "stickyToTop", "mute"]);
+const emit = defineEmits(["click", "delete", "stickyToTop", "mute", "avatarClick"]);
 /** 当前会话方在线离线状态 */
 const onlineStatus = ref<boolean>(false);
 
@@ -146,12 +152,18 @@ const handleActionItemClick = (key: string) => {
   }
 };
 
-// 群头像
-const teamAvatar = computed(() => {
-  if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM) {
-    const { avatar } = props.conversation;
-    return avatar;
+const handleAvatarClick = (event: MouseEvent) => {
+  if (
+    props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P &&
+    store?.aiUserStore.aiBots.has(to.value)
+  ) {
+    event.stopPropagation();
+    emit("avatarClick", to.value);
   }
+};
+
+const conversationAvatar = computed(() => {
+  return props.conversation.avatar;
 });
 
 // 会话名称
@@ -183,6 +195,12 @@ const date = computed(() => {
 const max = 99;
 
 const unread = computed(() => {
+  if (
+    isAIBotTopicConversation.value &&
+    props.conversation.conversationId === props.selectedConversation
+  ) {
+    return "";
+  }
   return props.conversation.unreadCount && props.conversation.unreadCount > 0
     ? props.conversation.unreadCount > max
       ? `${max}+`
@@ -218,6 +236,10 @@ const showSessionUnread = computed(() => {
   }
 });
 
+const isAIBotTopicConversation = computed(() => {
+  return store?.isAIBotTopicConversation(props.conversation.conversationId || "") || false;
+});
+
 /** 监听会话方在线离线状态 */
 const onlineStatusWatch = autorun(() => {
   if (props.conversation.type === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
@@ -227,8 +249,7 @@ const onlineStatusWatch = autorun(() => {
     ) as string;
 
     if (store?.localOptions?.loginStateVisible) {
-      onlineStatus.value =
-        stateMap?.get(to)?.statusType === V2NIMUserStatusType.V2NIM_USER_STATUS_TYPE_LOGIN;
+      onlineStatus.value = isUserStatusOnline(stateMap?.get(to));
     } else {
       onlineStatus.value = false;
     }
@@ -314,6 +335,7 @@ onUnmounted(() => {
 
 .conversation-item-desc-span {
   display: flex;
+  align-items: center;
   flex: 1;
   box-sizing: border-box;
   min-width: 0;
@@ -391,6 +413,18 @@ onUnmounted(() => {
   flex: 1;
   font-size: 12px;
   line-height: 22px;
+}
+
+.conversation-item-topic-tag {
+  flex: 0 0 auto;
+  height: 18px;
+  line-height: 18px;
+  padding: 0 5px;
+  margin-right: 6px;
+  border-radius: 3px;
+  background: #e8f2ff;
+  color: #337eff;
+  font-size: 11px;
 }
 
 /* 未读标记 */

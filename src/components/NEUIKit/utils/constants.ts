@@ -1247,8 +1247,6 @@ export const g2StatusMap: any = {
 
 export const msgRecallTime = 2 * 60 * 1000;
 
-export const APP_KEY = "3e215d27b6a6a9e27dad7ef36dd5b65c";
-
 export const NEUIKIT_VERSION = "10.1.0-beta";
 
 export const NESDK_VERSION = sdkpkg.version;

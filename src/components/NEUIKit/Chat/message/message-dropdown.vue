@@ -1,10 +1,6 @@
 <template>
   <div class="nim-dropdown" ref="dropdownRef">
-    <div
-      class="nim-dropdown-trigger"
-      @contextmenu.prevent="handleContextMenu"
-      @click="handleClick"
-    >
+    <div class="nim-dropdown-trigger" @contextmenu.prevent="handleContextMenu" @click="handleClick">
       <slot></slot>
     </div>
     <Transition name="dropdown" v-if="visible">
@@ -35,6 +31,7 @@ const props = withDefaults(
     lazy?: boolean;
     dropdownStyle?: CSSProperties;
     placement?: "top" | "bottom";
+    align?: "left" | "center" | "right";
     disabled?: boolean;
   }>(),
   {
@@ -42,6 +39,7 @@ const props = withDefaults(
     lazy: true,
     dropdownStyle: () => ({}),
     placement: "bottom",
+    align: "left",
     disabled: false,
   }
 );
@@ -101,11 +99,7 @@ const handleContextMenu = async (event: MouseEvent) => {
     event.preventDefault();
     return;
   }
-  if (
-    props.trigger === "contextmenu" ||
-    props.trigger === "click" ||
-    props.trigger === "both"
-  ) {
+  if (props.trigger === "contextmenu" || props.trigger === "click" || props.trigger === "both") {
     event.preventDefault();
     event.stopPropagation();
     document.dispatchEvent(
@@ -128,7 +122,6 @@ const handleContextMenu = async (event: MouseEvent) => {
       const viewportWidth = window.innerWidth;
 
       // 计算相对于dropdown容器的位置
-      const relativeX = event.clientX - containerRect.left;
       const relativeY = event.clientY - containerRect.top;
 
       // 获取下拉菜单元素的高度和宽度
@@ -147,39 +140,60 @@ const handleContextMenu = async (event: MouseEvent) => {
 
       if (props.placement === "bottom") {
         // 用户偏好bottom，但如果底部空间不足且上方空间充足，则切换到top
-        if (
-          spaceBelow < dropdownHeight + 200 &&
-          spaceAbove > dropdownHeight + 10
-        ) {
+        if (spaceBelow < dropdownHeight + 200 && spaceAbove > dropdownHeight + 10) {
           finalPlacement = "top";
         }
       } else if (props.placement === "top") {
         // 用户偏好top，但如果上方空间不足且下方空间充足，则切换到bottom
-        if (
-          spaceAbove < dropdownHeight + 10 &&
-          spaceBelow > dropdownHeight + 10
-        ) {
+        if (spaceAbove < dropdownHeight + 10 && spaceBelow > dropdownHeight + 10) {
           finalPlacement = "bottom";
         }
       }
 
+      const triggerElement = dropdownContainer.querySelector(
+        ".nim-dropdown-trigger"
+      ) as HTMLElement | null;
+      const triggerRect = triggerElement?.getBoundingClientRect();
+      const isClickTrigger = event.type === "click";
+
       // 根据最终placement计算Y位置
       let finalY;
       if (finalPlacement === "top") {
-        finalY = relativeY - dropdownHeight - 4;
+        finalY =
+          isClickTrigger && triggerRect
+            ? triggerRect.top - containerRect.top - dropdownHeight - 4
+            : relativeY - dropdownHeight - 4;
       } else {
-        finalY = relativeY + 4;
+        finalY =
+          isClickTrigger && triggerRect
+            ? triggerRect.bottom - containerRect.top + 4
+            : relativeY + 4;
       }
 
-      // X轴边界检测
-      let finalX = relativeX;
-      const absoluteX = containerRect.left + finalX;
-      if (absoluteX + dropdownWidth > viewportWidth) {
-        finalX = viewportWidth - containerRect.left - dropdownWidth - 4;
+      // X轴边界检测。先按视口坐标计算，再换算为相对 dropdown 容器的位置。
+      // 这样允许菜单向触发器左侧展开，避免靠右按钮的子菜单溢出。
+      let absoluteX = event.clientX;
+      if (isClickTrigger && triggerRect) {
+        if (props.align === "right") {
+          absoluteX = triggerRect.right - dropdownWidth;
+        } else if (props.align === "center") {
+          absoluteX = triggerRect.left + triggerRect.width / 2 - dropdownWidth / 2;
+        } else {
+          absoluteX = triggerRect.left;
+        }
+      } else if (props.align === "right") {
+        absoluteX = event.clientX - dropdownWidth;
+      } else if (props.align === "center") {
+        absoluteX = event.clientX - dropdownWidth / 2;
       }
-      if (finalX < 0) {
-        finalX = 4;
+
+      if (absoluteX + dropdownWidth > viewportWidth - 4) {
+        absoluteX = viewportWidth - dropdownWidth - 4;
       }
+      if (absoluteX < 4) {
+        absoluteX = 4;
+      }
+      const finalX = absoluteX - containerRect.left;
 
       // Y轴边界检测
       const absoluteY = containerRect.top + finalY;
@@ -197,8 +211,7 @@ const handleContextMenu = async (event: MouseEvent) => {
       // 更新transformOrigin以匹配实际显示位置
       const contentElement = dropdownContent;
       if (contentElement) {
-        contentElement.style.transformOrigin =
-          finalPlacement === "top" ? "bottom" : "top";
+        contentElement.style.transformOrigin = finalPlacement === "top" ? "bottom" : "top";
       }
     }
   }
@@ -227,19 +240,13 @@ const handleGlobalDropdownOpen = (event: any) => {
 onMounted(() => {
   document.addEventListener("click", handleClickOutside);
   document.addEventListener("contextmenu", handleClickOutside);
-  document.addEventListener(
-    "nim-dropdown-open",
-    handleGlobalDropdownOpen as any
-  );
+  document.addEventListener("nim-dropdown-open", handleGlobalDropdownOpen as any);
 });
 
 onUnmounted(() => {
   document.removeEventListener("click", handleClickOutside);
   document.removeEventListener("contextmenu", handleClickOutside);
-  document.removeEventListener(
-    "nim-dropdown-open",
-    handleGlobalDropdownOpen as any
-  );
+  document.removeEventListener("nim-dropdown-open", handleGlobalDropdownOpen as any);
 });
 </script>
 

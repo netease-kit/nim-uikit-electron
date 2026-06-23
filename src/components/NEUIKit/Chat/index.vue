@@ -1,6 +1,14 @@
 <template>
   <div v-if="selectedConversation" class="chat-container-wrapper">
-    <div class="chat-container">
+    <TopicSubsessionColumn
+      v-if="isAIBotTopicMode"
+      :conversation-id="selectedConversation"
+      @open-settings="showSettingDrawer"
+    />
+    <div v-if="isTopicPlaceholderVisible" class="chat-topic-placeholder">
+      <Empty :text="t('topicSubsessionSelectPlaceholder')" />
+    </div>
+    <div v-else class="chat-container">
       <!-- 聊天标题 -->
       <ChatHeader
         :to="to"
@@ -28,7 +36,7 @@
         :reply-msgs-map="replyMsgsMap"
       />
       <!-- 新消息提示 -->
-      <NewMessageTip :visible="showNewMsgTip" @click="scrollToBottomAndHideNewMsgTip" />
+      <NewMessageTip :visible="showNewMsgTip" :isMultiSelect="isMultiSelectMode" @click="scrollToBottomAndHideNewMsgTip" />
       <!-- 回到底部按钮 -->
       <BackToBottomBtn
         :visible="showBackToBottomBtn && !showNewMsgTip"
@@ -55,7 +63,11 @@
       <div @click="showSettingDrawer" class="slide-bar-icon setting-icon">
         <Icon type="icon-setting" :size="24"></Icon>
       </div>
-      <div @click="showChatHistoryDrawer" class="slide-bar-icon chat-history-icon">
+      <div
+        v-if="!isAIBotTopicMode"
+        @click="showChatHistoryDrawer"
+        class="slide-bar-icon chat-history-icon"
+      >
         <Icon type="icon-chat-history" :size="24"></Icon>
       </div>
       <!-- 聊天设置 -->
@@ -94,12 +106,22 @@
     :account="userCardAccount"
     @close="showUserCardModal = false"
   />
+  <BotCardModal
+    v-if="showBotCardModal"
+    :visible="showBotCardModal"
+    :bot="botCardInfo"
+    @close="handleCloseBotCardModal"
+    @delete="handleCloseBotCardModal"
+    @updated="handleBotCardUpdated"
+    @afterSendMsgClick="handleCloseBotCardModal"
+  />
 </template>
 <script lang="ts" setup>
 import { trackInit } from "../utils/reporter";
 import { autorun } from "mobx";
 import { ref, onMounted, onUnmounted, computed, nextTick, watch } from "vue";
 import ChatHeader from "./message/chat-header.vue";
+import TopicSubsessionColumn from "./topic/topic-subsession-column.vue";
 import MessageList from "./message/message-list.vue";
 import MessageInput from "./message/message-input.vue";
 import MultiMessageOperation from "./forward/multi-message-operation.vue";
@@ -110,6 +132,7 @@ import BackToBottomBtn from "./message/back-to-bottom-btn.vue";
 import NotFriendTip from "./message/not-friend-tip.vue";
 import MessageForwardModal from "./message/message-forward-modal.vue";
 import UserCardModal from "../CommonComponents/UserCardModal.vue";
+import BotCardModal from "../Contact/bot/bot-card-modal.vue";
 import { HISTORY_LIMIT, events } from "../utils/constants";
 import { t } from "../utils/i18n";
 import { V2NIMConst } from "../utils/constants";
@@ -117,16 +140,22 @@ import { V2NIMQueryDirection } from "node-nim";
 import { showToast, toast } from "../utils/toast";
 import { modal } from "../utils/modal";
 import Welcome from "../CommonComponents/Welcome.vue";
+import Empty from "../CommonComponents/Empty.vue";
 import Icon from "../CommonComponents/Icon.vue";
 import emitter from "../utils/eventBus";
 import type { V2NIMMessageForUI } from "../store/types";
-import type { V2NIMMessage, V2NIMMessageRefer } from "node-nim/types/v2_def/v2_nim_struct_def";
+import type {
+  V2NIMMessage,
+  V2NIMMessageRefer,
+  V2NIMUserAIBot,
+} from "node-nim/types/v2_def/v2_nim_struct_def";
 import { getFileMd5, isDiscussionFunc } from "../utils";
 import { getContextState } from "../utils/init";
-import { V2NIMConversationType, V2NIMUserStatusType } from "node-nim";
+import { V2NIMConversationType } from "node-nim";
 import { getMsgContentTipByType, isMessageNoError } from "../utils/msg";
 import packageJson from "../../../../package.json";
 import sdkPkg from "node-nim/package.json";
+import { isUserStatusOnline } from "../utils/user-status";
 
 const appVersion = packageJson.version;
 const sdkVersion = sdkPkg.version;
@@ -142,6 +171,45 @@ export interface YxReplyMsg {
 }
 
 const { store, nim } = getContextState();
+
+const createUnavailableReplyMsg = (
+  replyState: V2NIMMessageForUI["replyState"]
+): V2NIMMessageForUI => ({
+  messageClientId: "noFind",
+  replyState,
+});
+
+const isUnavailableReplyMsg = (message?: V2NIMMessage): message is V2NIMMessageForUI => {
+  return message?.messageClientId === "noFind";
+};
+
+const mergeReplyMsgsMap = (...maps: Array<Record<string, V2NIMMessageForUI>>) => {
+  const mergedMap = { ...(replyMsgsMap.value || {}) };
+
+  maps.forEach((map) => {
+    Object.keys(map).forEach((key) => {
+      const newValue = map[key];
+      const oldValue = mergedMap[key] as V2NIMMessageForUI | undefined;
+
+      if (!isUnavailableReplyMsg(newValue)) {
+        mergedMap[key] = newValue;
+        return;
+      }
+
+      if (newValue.replyState === "deleted" || newValue.replyState === "recalled") {
+        mergedMap[key] = newValue;
+        return;
+      }
+
+      if (!oldValue) {
+        mergedMap[key] = newValue;
+        return;
+      }
+    });
+  });
+
+  replyMsgsMap.value = mergedMap;
+};
 
 // 聊天标题
 const title = ref("");
@@ -177,6 +245,34 @@ const to = computed(() => {
   return nim?.conversationIdUtil?.parseConversationTargetId(selectedConversation.value) || "";
 });
 
+const isAIBotTopicMode = computed(() => {
+  return !!selectedConversation.value && !!store?.isAIBotTopicConversation(selectedConversation.value);
+});
+
+watch(isAIBotTopicMode, (value) => {
+  if (value && curDrawerVisible.value === "history") {
+    curDrawerVisible.value = "empty";
+  }
+});
+
+const topicSelectedType = ref<"none" | "draft" | "topic">("none");
+let activeTopicMessageKey = "";
+let pendingTopicScrollKey = "";
+
+const isTopicPlaceholderVisible = computed(() => {
+  return (
+    isAIBotTopicMode.value &&
+    topicSelectedType.value !== "topic" &&
+    topicSelectedType.value !== "draft"
+  );
+});
+
+const scrollMessageListToBottomAfterRender = async () => {
+  await nextTick();
+  await nextTick();
+  messageListRef.value?.scrollToBottom();
+};
+
 /**群头像 */
 const teamAvatar = ref<string>("");
 
@@ -207,6 +303,9 @@ const replyMsgsMap = ref<Record<string, V2NIMMessage>>();
 
 /** 已经请求过的被回复消息 idServer 集合，避免重复触发频控 */
 const fetchedReplyServerIds = new Set<string>();
+let replyMessageListKey = "";
+let previousReplyMessageClientIds = new Set<string>();
+let previousReplyMessageServerIds = new Set<string>();
 
 /** 新消息提醒 */
 const showNewMsgTip = ref(false);
@@ -261,6 +360,19 @@ const handleMergeCancel = () => {
   store?.uiStore.setMultiSelectMode(false);
 };
 
+const getSelectedMessagesForCurrentContext = (selectedIds: string[]): V2NIMMessageForUI[] => {
+  const conversationId = store?.uiStore.selectedConversation;
+  if (!conversationId) {
+    return [];
+  }
+
+  if (store?.isAIBotTopicConversation(conversationId)) {
+    return store.topicStore.getSelectedTopicMessages(conversationId, selectedIds);
+  }
+
+  return store?.msgStore.getMsg(conversationId, selectedIds) || [];
+};
+
 const handleMergeForward = async () => {
   const selectedIds = store?.uiStore.selectedMessageIds;
   if (!selectedIds || selectedIds.length === 0) {
@@ -273,7 +385,7 @@ const handleMergeForward = async () => {
     return;
   }
 
-  const msgsToForward = store?.msgStore.getMsg(store.uiStore.selectedConversation, selectedIds);
+  const msgsToForward = getSelectedMessagesForCurrentContext(selectedIds);
 
   if (!msgsToForward || msgsToForward.length === 0) {
     return;
@@ -438,7 +550,7 @@ const handleMergeDelete = () => {
     return;
   }
 
-  const msgsToDelete = store?.msgStore.getMsg(store.uiStore.selectedConversation, selectedIds);
+  const msgsToDelete = getSelectedMessagesForCurrentContext(selectedIds);
 
   if (!msgsToDelete || msgsToDelete.length === 0) {
     return;
@@ -450,6 +562,12 @@ const handleMergeDelete = () => {
     onConfirm: async () => {
       try {
         await store?.msgStore.deleteMsgActive(msgsToDelete);
+        if (
+          store?.uiStore.selectedConversation &&
+          store.isAIBotTopicConversation(store.uiStore.selectedConversation)
+        ) {
+          store.topicStore.removeTopicMessages(store.uiStore.selectedConversation, msgsToDelete);
+        }
         store?.uiStore.setMultiSelectMode(false);
         toast.success(t("deleteSuccessText"));
       } catch (error) {
@@ -474,6 +592,20 @@ const handleForwardSendSuccess = () => {
 const showUserCardModal = ref(false);
 /** 个人名片账号 */
 const userCardAccount = ref("");
+const showBotCardModal = ref(false);
+const botCardInfo = ref<V2NIMUserAIBot | null>(null);
+
+const handleCloseBotCardModal = () => {
+  showBotCardModal.value = false;
+  botCardInfo.value = null;
+};
+
+const handleBotCardUpdated = () => {
+  if (!botCardInfo.value?.accountId) {
+    return;
+  }
+  botCardInfo.value = store?.aiUserStore.aiBots.get(botCardInfo.value.accountId) || botCardInfo.value;
+};
 
 /**显示设置 */
 const showSettingDrawer = () => {
@@ -482,6 +614,9 @@ const showSettingDrawer = () => {
 
 /**显示聊天历史 */
 const showChatHistoryDrawer = () => {
+  if (isAIBotTopicMode.value) {
+    return;
+  }
   curDrawerVisible.value = "history";
 };
 
@@ -500,11 +635,9 @@ const setChatHeaderAndPlaceholder = () => {
     }) as string;
     subTitle.value = "";
     if (loginStateVisible) {
-      subTitle.value =
-        store?.subscriptionStore.stateMap.get(to.value)?.statusType ===
-        V2NIMUserStatusType.V2NIM_USER_STATUS_TYPE_LOGIN
-          ? `(${t("userOnlineText")})`
-          : `(${t("userOfflineText")})`;
+      subTitle.value = isUserStatusOnline(store?.subscriptionStore.stateMap.get(to.value))
+        ? `(${t("userOnlineText")})`
+        : `(${t("userOfflineText")})`;
     }
 
     let userNickOrAccount =
@@ -756,6 +889,20 @@ const subscribeUserStatus = (selectedConversation: string) => {
 
 /** 加载更多消息 - 基于第一条消息往上查询15条 */
 const loadMoreMsgs = (firstMsg: any) => {
+  if (selectedConversation.value && store?.isAIBotTopicConversation(selectedConversation.value)) {
+    const topicState = store.topicStore.getState(selectedConversation.value);
+    if (topicState.selected.type === "topic") {
+      store.topicStore
+        .loadMoreTopicMessages(selectedConversation.value, topicState.selected.topicId)
+        .finally(() => {
+          emitter.emit(events.RESET_LOADING_MORE_MESSAGES);
+        });
+    } else {
+      emitter.emit(events.RESET_LOADING_MORE_MESSAGES);
+    }
+    return;
+  }
+
   console.log("loadMoreMsgs 被调用，第一条消息:", firstMsg?.text || firstMsg?.messageType);
   if (firstMsg) {
     // 基于第一条消息往上查询15条消息
@@ -865,6 +1012,9 @@ const resetState = () => {
   subTitle.value = "";
   headerUpdateTime.value = undefined;
   fetchedReplyServerIds.clear();
+  replyMessageListKey = "";
+  previousReplyMessageClientIds = new Set();
+  previousReplyMessageServerIds = new Set();
 
   // 重置跳转相关状态
   if (store?.uiStore) {
@@ -912,12 +1062,25 @@ const getTeamMember = async () => {
 const handleReplyMsgs = (messages: V2NIMMessage[]) => {
   // 遍历所有消息，找出被回复消息，储存在map中
   if (messages.length !== 0) {
+    const currentMessageListKey = messages
+      .map((message) => message.messageClientId || message.messageServerId || "")
+      .join("|");
+    const isSameMessageList = currentMessageListKey === replyMessageListKey;
+    const currentReplyMessageClientIds = new Set<string>();
+    const currentReplyMessageServerIds = new Set<string>();
     const replyMsgsMapForExt: any = {};
     const replyMsgsMapForThreadReply: any = {};
     const extReqMsgs: YxReplyMsg[] = [];
     const threadReplyReqMsgs: V2NIMMessageRefer[] = [];
     const messageClientIds: Record<string, string> = {};
     msgs.value.forEach((msg) => {
+      if (msg.messageClientId) {
+        currentReplyMessageClientIds.add(msg.messageClientId);
+      }
+      if (msg.messageServerId) {
+        currentReplyMessageServerIds.add(msg.messageServerId);
+      }
+
       if (msg.serverExtension) {
         try {
           // yxReplyMsg 存储着被回复消息的相关消息
@@ -932,9 +1095,13 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
               replyMsgsMapForExt[msg.messageClientId as string] = beReplyMsg;
               // 如果没找到，说明被回复的消息可能有三种情况：1.被删除 2.被撤回 3.不在当前消息列表中（一次性没拉到，在之前的消息中）
             } else {
-              replyMsgsMapForExt[msg.messageClientId as string] = {
-                messageClientId: "noFind",
-              };
+              const replyMessageDeleted =
+                !isSameMessageList &&
+                !!yxReplyMsg.idClient &&
+                previousReplyMessageClientIds.has(yxReplyMsg.idClient) &&
+                !currentReplyMessageClientIds.has(yxReplyMsg.idClient);
+              replyMsgsMapForExt[msg.messageClientId as string] =
+                createUnavailableReplyMsg(replyMessageDeleted ? "deleted" : "notLoaded");
               const { scene, from, to, idServer, messageClientId, time, receiverId } = yxReplyMsg;
 
               if (scene && from && to && idServer && messageClientId && time && receiverId) {
@@ -955,29 +1122,51 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
       }
 
       if (msg.threadReply) {
+        if ((msg as V2NIMMessageForUI).replyState === "deleted") {
+          replyMsgsMapForThreadReply[msg.messageClientId as string] =
+            createUnavailableReplyMsg("deleted");
+          return;
+        }
+
         //找到被回复的消息
         const beReplyMsg = msgs.value.find(
-          (item) => item.messageServerId === msg.threadReply?.messageServerId
+          (item) =>
+            (!!msg.threadReply?.messageServerId &&
+              item.messageServerId === msg.threadReply?.messageServerId) ||
+            (!!msg.threadReply?.messageClientId &&
+              item.messageClientId === msg.threadReply?.messageClientId)
         ) as V2NIMMessageForUI;
 
         if (beReplyMsg) {
           if (beReplyMsg.recallType == "beReCallMsg" || beReplyMsg.recallType == "reCallMsg") {
-            replyMsgsMapForThreadReply[msg.messageClientId as string] = {
-              messageClientId: "noFind",
-            };
+            replyMsgsMapForThreadReply[msg.messageClientId as string] =
+              createUnavailableReplyMsg("recalled");
           } else {
             replyMsgsMapForThreadReply[msg.messageClientId as string] = beReplyMsg;
           }
         } else {
-          replyMsgsMapForThreadReply[msg.messageClientId as string] = {
-            messageClientId: "noFind",
-          };
-          messageClientIds[msg.threadReply.messageServerId as string] =
-            msg.messageClientId as string;
+          const replyMessageDeleted =
+            !isSameMessageList &&
+            ((!!msg.threadReply.messageServerId &&
+              previousReplyMessageServerIds.has(msg.threadReply.messageServerId) &&
+              !currentReplyMessageServerIds.has(msg.threadReply.messageServerId)) ||
+              (!!msg.threadReply.messageClientId &&
+                previousReplyMessageClientIds.has(msg.threadReply.messageClientId) &&
+                !currentReplyMessageClientIds.has(msg.threadReply.messageClientId)));
+          replyMsgsMapForThreadReply[msg.messageClientId as string] =
+            createUnavailableReplyMsg(replyMessageDeleted ? "deleted" : "notLoaded");
+          const replyMessageId = msg.threadReply.messageServerId || msg.threadReply.messageClientId;
+          if (replyMessageId) {
+            messageClientIds[replyMessageId] = msg.messageClientId as string;
+          }
           threadReplyReqMsgs.push(msg.threadReply);
         }
       }
     });
+
+    replyMessageListKey = currentMessageListKey;
+    previousReplyMessageClientIds = currentReplyMessageClientIds;
+    previousReplyMessageServerIds = currentReplyMessageServerIds;
 
     if (extReqMsgs.length > 0) {
       // 从服务器拉取被回复消息, 但是有频率控制
@@ -998,32 +1187,16 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
           if (res?.length > 0) {
             res.forEach((item) => {
               if (item.messageServerId) {
-                replyMsgsMapForExt[messageClientIds[item.messageServerId]] = item;
+                replyMsgsMapForExt[messageClientIds[item.messageServerId]] = item.isDeleted
+                  ? createUnavailableReplyMsg("deleted")
+                  : item;
               }
             });
           }
-          // 🔑 修复: 智能合并,保留已有的正确数据
-          const mergedMap = { ...replyMsgsMap.value };
-          Object.keys(replyMsgsMapForExt).forEach((key) => {
-            const newValue = replyMsgsMapForExt[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-          replyMsgsMap.value = mergedMap;
+          mergeReplyMsgsMap(replyMsgsMapForExt);
         })
         .catch(() => {
-          // 🔑 修复: 即使失败也要智能合并
-          const mergedMap = { ...replyMsgsMap.value };
-          Object.keys(replyMsgsMapForExt).forEach((key) => {
-            const newValue = replyMsgsMapForExt[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-          replyMsgsMap.value = mergedMap;
+          mergeReplyMsgsMap(replyMsgsMapForExt);
         });
     }
 
@@ -1039,30 +1212,7 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
         return true;
       });
       if (!deduped.length) {
-        // 本轮没有新增需要拉取的引用消息
-        // 🔑 修复: 智能合并,不要用 noFind 覆盖已经成功获取的回复消息
-        const mergedMap = { ...replyMsgsMap.value };
-
-        // 只有当新数据不是 noFind 或者旧数据不存在时,才更新
-        Object.keys(replyMsgsMapForExt).forEach((key) => {
-          const newValue = replyMsgsMapForExt[key];
-          const oldValue = mergedMap[key];
-          // 如果新值有效(不是noFind),或者旧值不存在,则使用新值
-          if (newValue?.messageClientId !== "noFind" || !oldValue) {
-            mergedMap[key] = newValue;
-          }
-        });
-
-        Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
-          const newValue = replyMsgsMapForThreadReply[key];
-          const oldValue = mergedMap[key];
-          // 如果新值有效(不是noFind),或者旧值不存在,则使用新值
-          if (newValue?.messageClientId !== "noFind" || !oldValue) {
-            mergedMap[key] = newValue;
-          }
-        });
-
-        replyMsgsMap.value = mergedMap;
+        mergeReplyMsgsMap(replyMsgsMapForExt, replyMsgsMapForThreadReply);
         return;
       }
 
@@ -1072,74 +1222,19 @@ const handleReplyMsgs = (messages: V2NIMMessage[]) => {
           if (res?.length > 0) {
             res.forEach((item) => {
               if (item.messageServerId) {
-                replyMsgsMapForThreadReply[messageClientIds[item.messageServerId]] = item;
+                replyMsgsMapForThreadReply[messageClientIds[item.messageServerId]] = item.isDeleted
+                  ? createUnavailableReplyMsg("deleted")
+                  : item;
               }
             });
           }
-          // 🔑 修复: 智能合并两个map,避免 noFind 覆盖已有数据
-          const mergedMap = { ...replyMsgsMap.value };
-
-          Object.keys(replyMsgsMapForExt).forEach((key) => {
-            const newValue = replyMsgsMapForExt[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-
-          Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
-            const newValue = replyMsgsMapForThreadReply[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-
-          replyMsgsMap.value = mergedMap;
+          mergeReplyMsgsMap(replyMsgsMapForExt, replyMsgsMapForThreadReply);
         })
         .catch(() => {
-          // 🔑 修复: 失败时也要智能合并
-          const mergedMap = { ...replyMsgsMap.value };
-
-          Object.keys(replyMsgsMapForExt).forEach((key) => {
-            const newValue = replyMsgsMapForExt[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-
-          Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
-            const newValue = replyMsgsMapForThreadReply[key];
-            const oldValue = mergedMap[key];
-            if (newValue?.messageClientId !== "noFind" || !oldValue) {
-              mergedMap[key] = newValue;
-            }
-          });
-
-          replyMsgsMap.value = mergedMap;
+          mergeReplyMsgsMap(replyMsgsMapForExt, replyMsgsMapForThreadReply);
         });
     } else {
-      // 🔑 修复: 同样需要智能合并,避免 noFind 覆盖已有的正确数据
-      const mergedMap = { ...replyMsgsMap.value };
-
-      Object.keys(replyMsgsMapForExt).forEach((key) => {
-        const newValue = replyMsgsMapForExt[key];
-        const oldValue = mergedMap[key];
-        if (newValue?.messageClientId !== "noFind" || !oldValue) {
-          mergedMap[key] = newValue;
-        }
-      });
-
-      Object.keys(replyMsgsMapForThreadReply).forEach((key) => {
-        const newValue = replyMsgsMapForThreadReply[key];
-        const oldValue = mergedMap[key];
-        if (newValue?.messageClientId !== "noFind" || !oldValue) {
-          mergedMap[key] = newValue;
-        }
-      });
-
-      replyMsgsMap.value = mergedMap;
+      mergeReplyMsgsMap(replyMsgsMapForExt, replyMsgsMapForThreadReply);
     }
   }
 };
@@ -1149,14 +1244,33 @@ const selectedConversationWatch = autorun(() => {
   const newConversationId = store?.uiStore?.selectedConversation || "";
 
   if (newConversationId !== selectedConversation.value) {
+    if (selectedConversation.value && store?.isAIBotTopicConversation(selectedConversation.value)) {
+      store.topicStore.discardDraft(selectedConversation.value);
+      store.topicStore.clearSelectedTopic(selectedConversation.value);
+    }
+
     selectedConversation.value = newConversationId;
+    msgs.value = [];
+    activeTopicMessageKey = "";
+    pendingTopicScrollKey = "";
     store?.uiStore.setMultiSelectMode(false);
 
     if (selectedConversation.value) {
       // 重置加载状态
       resetState(); // 在确认会话改变后再重置
 
-      if (isFirstLoad.value) {
+      if (store?.isAIBotTopicConversation(selectedConversation.value)) {
+        store.logger?.log("Chat selected Topic conversation", {
+          conversationId: selectedConversation.value,
+          targetId:
+            nim?.conversationIdUtil?.parseConversationTargetId(selectedConversation.value) || "",
+          conversationType: nim?.conversationIdUtil?.parseConversationType(selectedConversation.value),
+        });
+        void store.topicStore.ensureAllTopicsLoaded(selectedConversation.value).catch((error) => {
+          store.logger?.error("load Topic list failed", error);
+        });
+        isFirstLoad.value = false;
+      } else if (isFirstLoad.value) {
         // 初始化滚动到底部
         emitter.emit(events.ON_SCROLL_BOTTOM);
         // web im sdk 此处传Date.now() ,但electron im sdk 需要传 0，否则会出现获取不到最新一条消息的情况
@@ -1193,9 +1307,38 @@ const msgsWatch = autorun(() => {
   const conversationId = store?.uiStore.selectedConversation;
 
   if (conversationId) {
-    const messages = store?.msgStore.getMsg(conversationId) || [];
+    const topicState = store?.topicStore.getState(conversationId);
+    const selectedTopic =
+      store?.isAIBotTopicConversation(conversationId) && topicState?.selected.type === "topic"
+        ? topicState.selected
+        : undefined;
+    const selectedDraft =
+      store?.isAIBotTopicConversation(conversationId) && topicState?.selected.type === "draft"
+        ? topicState.selected
+        : undefined;
+    const messages = selectedTopic
+      ? store?.topicStore.getTopicMessages(conversationId, selectedTopic.topicId) || []
+      : selectedDraft?.topicId
+        ? store?.topicStore.getTopicMessages(conversationId, selectedDraft.topicId) || []
+      : store?.isAIBotTopicConversation(conversationId)
+        ? []
+        : store?.msgStore.getMsg(conversationId) || [];
 
     msgs.value = messages || [];
+
+    const topicMessageKey = selectedTopic
+      ? `${conversationId}:${selectedTopic.topicId}`
+      : selectedDraft?.topicId
+        ? `${conversationId}:${selectedDraft.topicId}`
+        : "";
+    if (topicMessageKey !== activeTopicMessageKey) {
+      activeTopicMessageKey = topicMessageKey;
+      pendingTopicScrollKey = topicMessageKey;
+    }
+    if (topicMessageKey && pendingTopicScrollKey === topicMessageKey && messages.length > 0) {
+      pendingTopicScrollKey = "";
+      void scrollMessageListToBottomAfterRender();
+    }
 
     // 遍历所有消息，找出被回复消息，储存在map中
     handleReplyMsgs(messages);
@@ -1213,6 +1356,28 @@ const jumpStateWatch = autorun(() => {
     // 如果不是跳转状态，隐藏按钮
     showBackToBottomBtn.value = false;
   }
+});
+
+const topicSelectedWatch = autorun(() => {
+  const conversationId = store?.uiStore.selectedConversation || "";
+  const isTopicConversation = !!conversationId && !!store?.isAIBotTopicConversation(conversationId);
+  const topicState = conversationId ? store?.topicStore.getState(conversationId) : undefined;
+
+  store?.logger?.log("Chat topicSelectedWatch", {
+    conversationId,
+    isTopicConversation,
+    selectedType: topicState?.selected.type,
+    topicCount: topicState?.order.length || 0,
+    loading: !!topicState?.loading,
+    empty: !!topicState?.empty,
+  });
+
+  if (!conversationId || !isTopicConversation) {
+    topicSelectedType.value = "none";
+    return;
+  }
+
+  topicSelectedType.value = topicState?.selected.type || "none";
 });
 
 // 侧边栏tab切换时，如果消息数量超过20条，则删除最旧的消息
@@ -1329,8 +1494,14 @@ onMounted(() => {
   emitter.on(events.AVATAR_CLICK, (account) => {
     const myUserAccountId = nim?.loginService?.getLoginUser();
     if (account !== myUserAccountId) {
-      userCardAccount.value = account as string;
-      showUserCardModal.value = true;
+      const bot = store?.aiUserStore.aiBots.get(account as string);
+      if (bot) {
+        botCardInfo.value = bot;
+        showBotCardModal.value = true;
+      } else {
+        userCardAccount.value = account as string;
+        showUserCardModal.value = true;
+      }
     }
   });
 
@@ -1358,6 +1529,7 @@ onUnmounted(() => {
   chatHeaderWatch();
   selectedConversationWatch();
   jumpStateWatch();
+  topicSelectedWatch();
   resetState();
   removeMsgs();
   multiSelectWatch();
@@ -1424,6 +1596,15 @@ onUnmounted(() => {
   height: 100%;
   display: flex;
   background: #f6f8fa;
+}
+
+.chat-topic-placeholder {
+  flex: 1;
+  height: 100%;
+  background: #f6f8fa;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .chat-slide-bar {

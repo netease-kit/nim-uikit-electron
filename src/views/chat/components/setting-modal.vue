@@ -77,6 +77,15 @@
           <Switch :checked="enableDesktopNotification" @change="onChangeDesktopNotification" />
         </div>
       </div>
+      <!-- <div class="setting-item">
+        <div class="item-left">{{ t("smsApiEnvText") }}</div>
+        <div class="item-right">
+          <select class="env-select" v-model="smsApiEnv" @change="onChangeSmsApiEnv">
+            <option value="prod">{{ t("prodEnvText") }}</option>
+            <option value="qa">{{ t("qaEnvText") }}</option>
+          </select>
+        </div>
+      </div> -->
     </div>
   </Modal>
 </template>
@@ -186,6 +195,19 @@ const onChangeCloseAction = async () => {
     }
   }
 };
+
+// const onChangeSmsApiEnv = async () => {
+//   await storageManager.setItem("smsApiEnv", smsApiEnv.value);
+//   const { nim } = getContextState();
+//   try {
+//     await nim?.loginService?.logout();
+//   } catch {
+//     /**/
+//   }
+//   await storageManager.clearLoginInfo();
+//   store?.resetState();
+//   router.push("/login");
+// };
 
 /**
  * 处理桌面通知设置变更

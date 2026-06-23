@@ -329,6 +329,13 @@ const handleTeamActionErrorCode = (
   switch (code) {
     case 109432:
       toast.error(t("noPermission"));
+      // 无权限时更新消息状态为已过期
+      store?.sysMsgStore.updateTeamJoinActionMsg([
+        {
+          ...msg,
+          actionStatus: V2NIMConst.V2NIMTeamJoinActionStatus.V2NIM_TEAM_JOIN_ACTION_STATUS_EXPIRED,
+        },
+      ]);
       break;
     case 109404:
       toast.error(t("processedValidationMessageText"));

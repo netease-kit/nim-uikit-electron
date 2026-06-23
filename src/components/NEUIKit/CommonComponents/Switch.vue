@@ -1,18 +1,18 @@
 <template>
-  <label class="switch-wrapper" :class="{ disabled }">
+  <label class="switch-wrapper" :class="{ disabled }" @click.prevent="handleClick">
     <input
       type="checkbox"
       class="switch-input"
       :checked="checked"
       :disabled="disabled"
-      @change="handleChange"
+      @click.prevent
     />
     <div class="switch-core"></div>
   </label>
 </template>
 
 <script lang="ts" setup>
-defineProps<{
+const props = defineProps<{
   checked: boolean;
   disabled?: boolean;
 }>();
@@ -21,10 +21,10 @@ const emit = defineEmits<{
   (e: "change", value: boolean): void;
 }>();
 
-const handleChange = (event: Event) => {
-  const value = (event.target as HTMLInputElement).checked;
-  // 保持与原来一样的事件格式
-  emit("change", value);
+const handleClick = () => {
+  if (props.disabled) return;
+  // 只触发事件，不改变内部状态，让父组件决定是否更新 checked
+  emit("change", !props.checked);
 };
 </script>
 
@@ -53,7 +53,9 @@ const handleChange = (event: Event) => {
   box-sizing: border-box;
   background: #dcdfe6;
   cursor: pointer;
-  transition: border-color 0.3s, background-color 0.3s;
+  transition:
+    border-color 0.3s,
+    background-color 0.3s;
 }
 
 .switch-core::after {

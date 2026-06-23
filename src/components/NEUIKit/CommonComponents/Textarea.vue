@@ -10,6 +10,7 @@
       :value="modelValue"
       :placeholder="placeholder"
       :disabled="disabled"
+      :readonly="readonly"
       :maxlength="maxlength"
       :style="computedTextareaStyle"
       :rows="currentRows"
@@ -59,6 +60,10 @@ const props = defineProps({
     default: "请输入",
   },
   disabled: {
+    type: Boolean,
+    default: false,
+  },
+  readonly: {
     type: Boolean,
     default: false,
   },
@@ -201,6 +206,9 @@ const adjustHeight = () => {
 };
 
 const handleInput = (event: Event) => {
+  if (props.disabled || props.readonly) {
+    return;
+  }
   const target = event.target as HTMLTextAreaElement;
   emit("update:modelValue", target.value);
   emit("input", event);
@@ -212,6 +220,10 @@ const handleInput = (event: Event) => {
 };
 
 const handleFocus = (event: FocusEvent) => {
+  if (props.disabled || props.readonly) {
+    textareaRef.value?.blur();
+    return;
+  }
   emit("focus", event);
 };
 
@@ -230,6 +242,10 @@ const clearInput = () => {
 };
 
 const handleKeydown = (event: KeyboardEvent) => {
+  if (props.disabled || props.readonly) {
+    event.preventDefault();
+    return;
+  }
   // 如果正在组合输入（如中文输入法），不处理Enter键
   if (isComposing.value) {
     return;
@@ -257,6 +273,9 @@ const handleKeydown = (event: KeyboardEvent) => {
 
 // 处理组合输入开始（中文输入法开始输入）
 const handleCompositionStart = () => {
+  if (props.disabled || props.readonly) {
+    return;
+  }
   isComposing.value = true;
 };
 
@@ -267,6 +286,10 @@ const handleCompositionEnd = () => {
 
 // 处理粘贴事件，向上透传给父组件
 const handlePaste = (event: ClipboardEvent) => {
+  if (props.disabled || props.readonly) {
+    event.preventDefault();
+    return;
+  }
   emit("paste", event);
 };
 

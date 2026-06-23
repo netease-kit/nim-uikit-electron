@@ -239,7 +239,7 @@ const handleScrollMsgIntoView = (messageClientId: unknown) => {
     const msgEl = messageListRef.value?.querySelector(`[data-msg-id="${messageClientId}"]`);
     if (msgEl) {
       (msgEl as HTMLElement).scrollIntoView({
-        block: "nearest",
+        block: "center",
         behavior: "smooth",
       });
     }

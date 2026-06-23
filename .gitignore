@@ -1,25 +1,17 @@
-.DS_Store
-node_modules
-/dist
-
-
-# local env files
+# Project ignores
+.claude/
+node_modules/
+dist-electron/
+dist/
+release/
+.env
 .env.local
 .env.*.local
+.env.internal
+.env.internal.*
 
-# Log files
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
+# System files
+.DS_Store
 
-# Editor directories and files
-.idea
-*.suo
-*.ntvs*
-*.njsproj
-*.sln
-*.sw?
-
-/dist 
-/dist-electron
+# HarmonyOS build outputs
+.hvigor/

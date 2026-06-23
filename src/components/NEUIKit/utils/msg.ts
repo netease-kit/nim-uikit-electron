@@ -1,6 +1,9 @@
 import { V2NIMConst, REPLY_MSG_TYPE_MAP } from "./constants";
 import { t } from "./i18n";
-import { V2NIMMessageType } from "node-nim";
+import type { V2NIMMessageType } from "node-nim";
+import type { V2NIMMessageForUI } from "../store/types";
+
+const V2NIM_MESSAGE_AI_STATUS_RESPONSE = 2;
 const translate = (key: string): string => {
   const text =
     {
@@ -118,4 +121,65 @@ export const getReplyMsgTypeText = (msg: any): string => {
 export const isMessageNoError = (errorCode?: number) => {
   if (errorCode === undefined) return false;
   return errorCode === 0 || errorCode === 200;
+};
+
+export interface ShouldRenderMessageMarkdownContext {
+  currentAccountId?: string;
+  conversationTargetId?: string;
+  isAIBotTopicConversation?: boolean;
+  isAIBot?: (accountId: string) => boolean;
 }
+
+const getEffectiveSenderId = (msg: V2NIMMessageForUI): string | undefined => {
+  if (
+    msg.aiConfig?.aiStatus === V2NIM_MESSAGE_AI_STATUS_RESPONSE &&
+    msg.aiConfig.accountId
+  ) {
+    return msg.aiConfig.accountId;
+  }
+
+  return msg.senderId;
+};
+
+/**
+ * 只对 AI/机器人回复文本启用 markdown，普通用户文本继续走 MessageText。
+ */
+export const shouldRenderMessageMarkdown = (
+  msg: V2NIMMessageForUI,
+  context: ShouldRenderMessageMarkdownContext = {}
+): boolean => {
+  if (msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT) {
+    return false;
+  }
+
+  if (!msg.text) {
+    return false;
+  }
+
+  if (msg.streamConfig !== undefined) {
+    return true;
+  }
+
+  if (msg.aiConfig?.aiStatus === V2NIM_MESSAGE_AI_STATUS_RESPONSE) {
+    return true;
+  }
+
+  if (!context.isAIBotTopicConversation || !context.conversationTargetId) {
+    return false;
+  }
+
+  const effectiveSenderId = getEffectiveSenderId(msg);
+  if (!effectiveSenderId || effectiveSenderId !== context.conversationTargetId) {
+    return false;
+  }
+
+  if (context.currentAccountId && effectiveSenderId === context.currentAccountId) {
+    return false;
+  }
+
+  if (msg.isSelf === true) {
+    return false;
+  }
+
+  return context.isAIBot?.(context.conversationTargetId) ?? true;
+};

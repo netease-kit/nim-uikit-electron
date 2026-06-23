@@ -11,3 +11,5 @@ export const PIN_CONVERSATION_LIMIT = 20;
 export const RECALL_TIME = 2 * 60 * 1000;
 
 export const AI_MESSAGE_LIMIT = 30;
+
+export const QUICK_COMMENT_CACHE_LIMIT = 3000;

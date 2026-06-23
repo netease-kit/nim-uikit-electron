@@ -6,6 +6,7 @@
       'is-uploading': isUploading,
       'msg-file-in': !msg.isSelf,
       'msg-file-out': msg.isSelf,
+      'msg-file-embedded': props.embedded,
     }"
   >
     <!-- 文件信息区域（始终显示） -->
@@ -38,7 +39,11 @@
       <Icon type="icon-guanbi" :size="14" color="#999"></Icon>
     </div>
     <!-- 底部进度条 -->
-    <UploadProgressBar v-if="isUploading" :progress="uploadProgress" :parentPadding="12" />
+    <UploadProgressBar
+      v-if="isUploading"
+      :progress="uploadProgress"
+      :parentPadding="props.embedded ? 0 : 12"
+    />
   </div>
 </template>
 
@@ -56,7 +61,9 @@ import { getContextState } from "../../utils/init";
 
 const { store } = getContextState();
 
-const props = withDefaults(defineProps<{ msg: V2NIMMessageForUI }>(), {});
+const props = withDefaults(defineProps<{ msg: V2NIMMessageForUI; embedded?: boolean }>(), {
+  embedded: false,
+});
 
 // 判断是否正在上传
 const isUploading = computed(() => {
@@ -161,6 +168,14 @@ const downloadName = computed(() => {
 
 .msg-file-wrapper.is-uploading {
   padding-bottom: 16px;
+}
+
+.msg-file-wrapper.msg-file-embedded {
+  max-width: none;
+  padding: 0;
+  background-color: transparent;
+  border-radius: 0;
+  margin-left: 0;
 }
 
 /* 接收的文件消息 */

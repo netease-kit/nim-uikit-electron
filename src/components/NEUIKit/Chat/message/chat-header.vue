@@ -44,6 +44,15 @@
       :nick="title"
       @close="handleCloseModal"
     />
+    <BotCardModal
+      v-if="showBotCardModal"
+      :visible="showBotCardModal"
+      :bot="botInfo"
+      @close="handleCloseBotModal"
+      @delete="handleCloseBotModal"
+      @updated="handleBotUpdated"
+      @afterSendMsgClick="handleCloseBotModal"
+    />
   </div>
 </template>
 
@@ -58,8 +67,11 @@
 import { ref } from "vue";
 import Avatar from "../../CommonComponents/Avatar.vue";
 import UserCardModal from "../../CommonComponents/UserCardModal.vue";
+import BotCardModal from "../../Contact/bot/bot-card-modal.vue";
 import { V2NIMConst } from "../../utils/constants";
+import { getContextState } from "../../utils/init";
 import type { V2NIMConversationType } from "node-nim";
+import type { V2NIMUserAIBot } from "node-nim/types/v2_def/v2_nim_struct_def";
 
 /**
  * 组件属性定义
@@ -89,6 +101,9 @@ const props = withDefaults(
 
 /** 控制用户名片弹窗的显示状态 */
 const showUserCardModal = ref(false);
+const showBotCardModal = ref(false);
+const botInfo = ref<V2NIMUserAIBot | null>(null);
+const { store } = getContextState();
 
 /**
  * 头像点击事件处理
@@ -97,7 +112,13 @@ const showUserCardModal = ref(false);
  */
 const onAvatarClick = () => {
   if (props.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P) {
-    showUserCardModal.value = true;
+    const bot = store?.aiUserStore.aiBots.get(props.to);
+    if (bot) {
+      botInfo.value = bot;
+      showBotCardModal.value = true;
+    } else {
+      showUserCardModal.value = true;
+    }
   }
 };
 
@@ -106,6 +127,15 @@ const onAvatarClick = () => {
  */
 const handleCloseModal = () => {
   showUserCardModal.value = false;
+};
+
+const handleCloseBotModal = () => {
+  showBotCardModal.value = false;
+  botInfo.value = null;
+};
+
+const handleBotUpdated = () => {
+  botInfo.value = store?.aiUserStore.aiBots.get(props.to) || botInfo.value;
 };
 </script>
 

@@ -1,0 +1,17 @@
+{
+  appId: "com.netease.yunxin.uikit",
+  target: ["hap"],
+  icon: "src/assets/icon.png",
+  productLogo: "src/assets/icon.png",
+  startIcon: "src/assets/icon.png",
+  artifactName: "nim-ohos-${version}-${arch}.${ext}",
+  // Keep these fields empty when signing material is supplied through OHAP_* environment variables.
+  signing: {
+    certPath: "",
+    profile: "",
+    keyAlias: "",
+    keyPassword: "",
+    storeFile: "",
+    storePassword: "",
+  },
+}

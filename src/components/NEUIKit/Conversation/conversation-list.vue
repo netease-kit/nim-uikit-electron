@@ -29,9 +29,19 @@
           @mute="handleConversationItemMute(conversation)"
           @delete="handleConversationItemDelete(conversation)"
           @stickyToTop="handleConversationItemStickTop(conversation)"
+          @avatarClick="handleConversationAvatarClick"
         />
       </div>
     </RecycleScroller>
+    <BotCardModal
+      v-if="showBotCardModal"
+      :visible="showBotCardModal"
+      :bot="botCardInfo"
+      @close="handleCloseBotCardModal"
+      @delete="handleCloseBotCardModal"
+      @updated="handleBotCardUpdated"
+      @afterSendMsgClick="handleCloseBotCardModal"
+    />
   </div>
 </template>
 
@@ -45,6 +55,7 @@ import "vue-virtual-scroller/dist/vue-virtual-scroller.css";
 import { V2NIMConst } from "../utils/constants";
 import Empty from "../CommonComponents/Empty.vue";
 import ConversationItem from "./conversation-item.vue";
+import BotCardModal from "../Contact/bot/bot-card-modal.vue";
 import { t } from "../utils/i18n";
 import { showToast } from "../utils/toast";
 import { trackInit } from "../utils/reporter";
@@ -53,6 +64,7 @@ import type {
   V2NIMLocalConversationForUI,
 } from "../store/types";
 import { getContextState } from "../utils/init";
+import type { V2NIMUserAIBot } from "node-nim/types/v2_def/v2_nim_struct_def";
 
 const conversationList = ref<
   (V2NIMConversationForUI | V2NIMLocalConversationForUI)[]
@@ -73,6 +85,8 @@ const listWrapper = ref<HTMLElement | null>(null);
 const loading = ref(false);
 
 const selectedConversation = ref("");
+const showBotCardModal = ref(false);
+const botCardInfo = ref<V2NIMUserAIBot | null>(null);
 
 const selectedConversationWatch = autorun(() => {
   selectedConversation.value = store?.uiStore?.selectedConversation || "";
@@ -196,12 +210,16 @@ const handleConversationItemClick = async (
   currentMoveSessionId.value = "";
   try {
     flag = true;
+    const isAIBotTopicConversation = store?.isAIBotTopicConversation(
+      conversation.conversationId || "",
+    );
     // 处理@消息相关
     if (
-      conversation.type ===
+      !isAIBotTopicConversation &&
+      (conversation.type ===
         V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM ||
-      conversation.type ===
-        V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_SUPER_TEAM
+        conversation.type ===
+          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_SUPER_TEAM)
     ) {
       if (enableCloudConversation) {
         await store?.conversationStore?.markConversationReadActive(
@@ -222,6 +240,26 @@ const handleConversationItemClick = async (
   } finally {
     flag = false;
   }
+};
+
+const handleConversationAvatarClick = (account: string) => {
+  const bot = store?.aiUserStore.aiBots.get(account);
+  if (bot) {
+    botCardInfo.value = bot;
+    showBotCardModal.value = true;
+  }
+};
+
+const handleCloseBotCardModal = () => {
+  showBotCardModal.value = false;
+  botCardInfo.value = null;
+};
+
+const handleBotCardUpdated = () => {
+  if (!botCardInfo.value?.accountId) {
+    return;
+  }
+  botCardInfo.value = store?.aiUserStore.aiBots.get(botCardInfo.value.accountId) || botCardInfo.value;
 };
 
 // 删除会话

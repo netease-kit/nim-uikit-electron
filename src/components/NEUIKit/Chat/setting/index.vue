@@ -19,10 +19,7 @@
         </div>
       </template>
       <div
-        v-if="
-          conversationType ==
-          V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
-        "
+        v-if="conversationType == V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM"
         class="chat-setting-content"
       >
         <!-- 群设置主页 -->
@@ -90,15 +87,9 @@ import Drawer from "../../CommonComponents/Drawer.vue";
 import Icon from "../../CommonComponents/Icon.vue";
 import P2pSetting from "./p2p/index.vue";
 import type { V2NIMConversationType } from "node-nim";
-import type {
-  V2NIMTeam,
-  V2NIMTeamMember,
-} from "node-nim/types/v2_def/v2_nim_struct_def";
+import type { V2NIMTeam, V2NIMTeamMember } from "node-nim/types/v2_def/v2_nim_struct_def";
 import type { V2NIMTeamMessageMuteMode } from "node-nim";
-import type {
-  V2NIMConversationForUI,
-  V2NIMLocalConversationForUI,
-} from "../../store/types";
+import type { V2NIMConversationForUI, V2NIMLocalConversationForUI } from "../../store/types";
 import { autorun } from "mobx";
 import { toast } from "../../utils/toast";
 import { isDiscussionFunc } from "../../utils";
@@ -154,10 +145,7 @@ const team = ref<V2NIMTeam>();
 // 是否是群主
 const isTeamOwner = computed(() => {
   const myUser = store?.userStore.myUserInfo;
-  return (
-    (team.value ? team.value.ownerAccountId : "") ===
-    (myUser ? myUser.accountId : "")
-  );
+  return (team.value ? team.value.ownerAccountId : "") === (myUser ? myUser.accountId : "");
 });
 /** 是否是讨论组 */
 const isDiscussion = computed(() => {
@@ -172,30 +160,23 @@ const isTeamManager = computed(() => {
     .filter(
       (item) =>
         //@ts-ignore
-        item.memberRole ===
-        V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
+        item.memberRole === V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
     )
     .some((member) => member.accountId === (myUser ? myUser.accountId : ""));
 });
 
 // 当前会话
-const conversation = ref<
-  V2NIMConversationForUI | V2NIMLocalConversationForUI
->();
+const conversation = ref<V2NIMConversationForUI | V2NIMLocalConversationForUI>();
 
 // 切换子路径
-const onChangeSubPath = (
-  value: "team-setting" | "team-info" | "team-member"
-) => {
+const onChangeSubPath = (value: "team-setting" | "team-info" | "team-member") => {
   path.value = value;
   if (path.value == "team-setting") {
     title.value = t("setText");
   } else if (path.value == "team-info") {
     title.value = isDiscussion.value ? t("discussionText") : t("teamInfoText");
   } else if (path.value == "team-member") {
-    title.value = isDiscussion.value
-      ? t("discussionMemberText")
-      : t("teamMemberText");
+    title.value = isDiscussion.value ? t("discussionMemberText") : t("teamMemberText");
   } else if (path.value == "team-management") {
     title.value = t("teamManagerText");
   }
@@ -258,16 +239,24 @@ let teamWatch = () => {};
 let teamMemberWatch = () => {};
 // 群会话变更监听
 let conversationWatch = () => {};
+// 群免打扰状态变更监听
+let teamMuteModeWatch = () => {};
 
 onMounted(() => {
   const teamId = props.to;
 
   // 查询当前群是否开启免打扰
-  store?.teamStore
-    .getTeamMessageMuteModeActive(teamId, 1)
-    .then((res: V2NIMTeamMessageMuteMode) => {
-      teamMuteMode.value = res;
-    });
+  store?.teamStore.getTeamMessageMuteModeActive(teamId, 1).then((res: V2NIMTeamMessageMuteMode) => {
+    teamMuteMode.value = res;
+  });
+
+  // 监听群免打扰状态变更
+  teamMuteModeWatch = autorun(() => {
+    const muteMode = store?.teamStore.teamMessageMuteModes.get(teamId);
+    if (muteMode !== undefined) {
+      teamMuteMode.value = muteMode;
+    }
+  });
 
   // 我在群里的昵称
   teamMemberWatch = autorun(() => {
@@ -276,9 +265,7 @@ onMounted(() => {
         store?.userStore.myUserInfo.accountId as string,
       ])?.[0]?.teamNick || "";
 
-    teamMembers.value = store?.teamMemberStore.getTeamMember(
-      teamId
-    ) as V2NIMTeamMember[];
+    teamMembers.value = store?.teamMemberStore.getTeamMember(teamId) as V2NIMTeamMember[];
   });
 
   teamWatch = autorun(() => {
@@ -300,8 +287,7 @@ onMounted(() => {
   });
 
   conversationWatch = autorun(() => {
-    const conversationId =
-      nim?.conversationIdUtil?.teamConversationId(teamId) || "";
+    const conversationId = nim?.conversationIdUtil?.teamConversationId(teamId) || "";
     conversation.value = enableCloudConversation
       ? store.conversationStore?.conversations.get(conversationId)
       : store?.localConversationStore?.conversations.get(conversationId);
@@ -312,6 +298,7 @@ onUnmounted(() => {
   teamWatch();
   teamMemberWatch();
   conversationWatch();
+  teamMuteModeWatch();
 });
 </script>
 

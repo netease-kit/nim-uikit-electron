@@ -1,21 +1,29 @@
 <template>
   <div class="page-wrapper drag-region">
-    <div class="login-card no-drag" v-show="step === 0">
-      <Welcome />
+    <div v-if="isFixedLoginMode" class="login-card fixed-login-card no-drag">
+      <FixedLoginForm />
     </div>
-    <div class="login-card no-drag" v-show="step === 1">
-      <LoginForm />
-    </div>
+    <template v-else>
+      <div class="login-card no-drag" v-show="step === 0">
+        <Welcome />
+      </div>
+      <div class="login-card no-drag" v-show="step === 1">
+        <LoginForm />
+      </div>
+    </template>
   </div>
 </template>
 
 <script lang="ts" setup>
 import { onMounted, onUnmounted, ref } from "vue";
+import FixedLoginForm from "./components/fixed-login-form.vue";
 import LoginForm from "./components/login-form.vue";
 import Welcome from "./components/welcome.vue";
 import emitter from "../utils/eventBus";
+import { isFixedLoginMode } from "../../../config/appConfig";
 
 const step = ref(0); // 0: 欢迎页 1: 登录页
+
 onMounted(() => {
   emitter.on("login", () => {
     step.value = 1;
@@ -57,5 +65,9 @@ onUnmounted(() => {
 }
 .no-drag {
   -webkit-app-region: no-drag;
+}
+
+.fixed-login-card {
+  padding: 44px 30px 52px;
 }
 </style>

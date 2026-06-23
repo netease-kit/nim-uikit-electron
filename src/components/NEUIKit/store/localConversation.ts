@@ -788,8 +788,14 @@ export class LocalConversationStore {
 
   private async _onConversationChanged(data: V2NIMLocalConversation[]) {
     this.logger?.log("LocalConversationStore _onConversationChanged", data);
-    this.addConversation(data);
-    data.forEach(async (item) => {
+    const conversations = data.map((item) =>
+      Object.prototype.hasOwnProperty.call(item, "lastMessage")
+        ? item
+        : ({ ...item, lastMessage: undefined } as V2NIMLocalConversation)
+    );
+
+    this.addConversation(conversations);
+    conversations.forEach(async (item) => {
       const attachment = item.lastMessage
         ?.attachment as unknown as V2NIMMessageTeamNotificationAttachment;
       // 处理下退出群聊和解散群聊的情况
@@ -817,7 +823,9 @@ export class LocalConversationStore {
       } else if (
         this.rootStore.uiStore.selectedConversation === item.conversationId
       ) {
-        await this.resetConversation(item.conversationId);
+        if (!this.rootStore.isAIBotTopicConversation(item.conversationId)) {
+          await this.resetConversation(item.conversationId);
+        }
       }
 
       if (

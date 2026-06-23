@@ -66,8 +66,7 @@ export default {
     placement: {
       type: String,
       default: "auto",
-      validator: (value) =>
-        ["top", "bottom", "left", "right", "auto"].includes(value),
+      validator: (value) => ["top", "bottom", "left", "right", "auto"].includes(value),
     },
     // 标题
     title: {
@@ -226,10 +225,7 @@ export default {
     }
 
     // 从body中移除popover元素
-    if (
-      this.$refs.popoverRef &&
-      this.$refs.popoverRef.parentNode === document.body
-    ) {
+    if (this.$refs.popoverRef && this.$refs.popoverRef.parentNode === document.body) {
       document.body.removeChild(this.$refs.popoverRef);
     }
   },
@@ -357,12 +353,48 @@ export default {
           return triggerRect.right - popoverRect.width + this.alignOffset;
         case "center":
         default:
-          return (
-            triggerRect.left +
-            (triggerRect.width - popoverRect.width) / 2 +
-            this.alignOffset
-          );
+          return triggerRect.left + (triggerRect.width - popoverRect.width) / 2 + this.alignOffset;
       }
+    },
+
+    getViewportBoundedSize(value, availableSize, preserveAuto = false) {
+      const safeSize = Math.max(0, availableSize);
+
+      if (typeof value === "number") {
+        return `${Math.min(value, safeSize)}px`;
+      }
+
+      if (typeof value !== "string") {
+        return `${safeSize}px`;
+      }
+
+      const normalizedValue = value.trim();
+
+      if (normalizedValue === "auto") {
+        return preserveAuto ? undefined : "auto";
+      }
+
+      if (normalizedValue === "none") {
+        return `${safeSize}px`;
+      }
+
+      const pixelMatch = normalizedValue.match(/^(\d+(?:\.\d+)?)px$/);
+
+      if (pixelMatch) {
+        return `${Math.min(Number(pixelMatch[1]), safeSize)}px`;
+      }
+
+      return `min(${normalizedValue}, ${safeSize}px)`;
+    },
+
+    clampPosition(value, contentSize, viewportSize, margin) {
+      const maxValue = viewportSize - contentSize - margin;
+
+      if (maxValue < margin) {
+        return margin;
+      }
+
+      return Math.min(Math.max(value, margin), maxValue);
     },
 
     // 更新位置
@@ -388,9 +420,18 @@ export default {
         popover.style.display = "block";
 
         const triggerRect = trigger.getBoundingClientRect();
-        const popoverRect = popover.getBoundingClientRect();
         const viewportWidth = window.innerWidth;
         const viewportHeight = window.innerHeight;
+        const viewportMargin = 10;
+        const availableWidth = viewportWidth - viewportMargin * 2;
+        const boundedWidth = this.getViewportBoundedSize(this.width, availableWidth, true);
+        const boundedMaxWidth = this.getViewportBoundedSize(this.maxWidth, availableWidth);
+
+        popover.style.boxSizing = "border-box";
+        popover.style.width = boundedWidth || "";
+        popover.style.maxWidth = boundedMaxWidth;
+
+        const popoverRect = popover.getBoundingClientRect();
 
         let placement = this.placement;
 
@@ -402,12 +443,7 @@ export default {
           const spaceRight = viewportWidth - triggerRect.right;
 
           // 选择空间最大的方向
-          const maxSpace = Math.max(
-            spaceTop,
-            spaceBottom,
-            spaceLeft,
-            spaceRight
-          );
+          const maxSpace = Math.max(spaceTop, spaceBottom, spaceLeft, spaceRight);
           if (maxSpace === spaceBottom) {
             placement = "bottom";
           } else if (maxSpace === spaceTop) {
@@ -427,8 +463,7 @@ export default {
         switch (placement) {
           case "top":
             // 根据触发方式调整间距，click时需要更大间距避免遮挡
-            const topOffset =
-              this.trigger === "click" ? this.offset + 4 : this.offset;
+            const topOffset = this.trigger === "click" ? this.offset + 4 : this.offset;
             top = triggerRect.top - popoverRect.height - topOffset;
             left = this.calculateLeftPosition(triggerRect, popoverRect);
             break;
@@ -437,13 +472,11 @@ export default {
             left = this.calculateLeftPosition(triggerRect, popoverRect);
             break;
           case "left":
-            top =
-              triggerRect.top + (triggerRect.height - popoverRect.height) / 2;
+            top = triggerRect.top + (triggerRect.height - popoverRect.height) / 2;
             left = triggerRect.left - popoverRect.width - this.offset;
             break;
           case "right":
-            top =
-              triggerRect.top + (triggerRect.height - popoverRect.height) / 2;
+            top = triggerRect.top + (triggerRect.height - popoverRect.height) / 2;
             left = triggerRect.right + this.offset;
             break;
           default:
@@ -452,33 +485,23 @@ export default {
         }
 
         // 边界检测和调整
-        if (left < 10) {
-          left = 10;
-        } else if (left + popoverRect.width > viewportWidth - 10) {
-          left = viewportWidth - popoverRect.width - 10;
-        }
+        left = this.clampPosition(left, popoverRect.width, viewportWidth, viewportMargin);
 
         // 对于top placement，如果计算出的位置会导致popover超出顶部边界，
         // 则改为bottom placement
-        if (placement === "top" && top < 10) {
+        if (placement === "top" && top < viewportMargin) {
           top = triggerRect.bottom + this.offset;
           this.currentPlacement = "bottom";
-        } else if (placement !== "top" && top < 10) {
-          top = 10;
-        } else if (top + popoverRect.height > viewportHeight - 10) {
-          top = viewportHeight - popoverRect.height - 10;
         }
+
+        top = this.clampPosition(top, popoverRect.height, viewportHeight, viewportMargin);
 
         const newStyle = {
           position: "fixed",
           top: `${top}px`,
           left: `${left}px`,
-          width:
-            typeof this.width === "number" ? `${this.width}px` : this.width,
-          maxWidth:
-            typeof this.maxWidth === "number"
-              ? `${this.maxWidth}px`
-              : this.maxWidth,
+          width: boundedWidth,
+          maxWidth: boundedMaxWidth,
         };
 
         // 只有当样式真正发生变化时才更新
@@ -577,6 +600,7 @@ export default {
 .popover-content {
   position: fixed;
   z-index: 1000;
+  box-sizing: border-box;
   background: var(--popover-bg-color, #fff);
   border: 1px solid #e4e7ed;
   border-radius: 8px;
@@ -599,6 +623,8 @@ export default {
 }
 
 .popover-body {
+  box-sizing: border-box;
+  max-width: 100%;
   padding: 12px 16px;
   color: #606266;
 }
@@ -691,7 +717,9 @@ export default {
 /* 过渡动画 */
 .popover-fade-enter-active,
 .popover-fade-leave-active {
-  transition: opacity 0.2s ease, transform 0.2s ease;
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
 
 .popover-fade-enter-from,

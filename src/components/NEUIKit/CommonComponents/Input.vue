@@ -43,6 +43,9 @@
         ></path>
       </svg>
     </span>
+    <span v-if="$slots.suffix" class="input-suffix">
+      <slot name="suffix"></slot>
+    </span>
   </div>
 </template>
 
@@ -177,6 +180,8 @@ defineExpose({
 }
 
 .input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   height: 100%;
   border: none;
@@ -216,5 +221,12 @@ defineExpose({
   font-size: 15px;
   border-radius: 50%;
   text-align: center;
+}
+
+.input-suffix {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  margin-right: 10px;
 }
 </style>

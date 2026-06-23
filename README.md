@@ -48,6 +48,45 @@ this.init({
 npm install
 npm run dev
 
+## 鸿蒙产物构建
+
+编译鸿蒙产物前，需要先安装项目依赖，然后执行鸿蒙构建脚本：
+
+```bash
+npm ci
+npm run build:ohos
+```
+
+CI 中的 `ohos` 任务也采用相同流程：进入 `im-kit-electron-ui` 后先执行 `npm ci`，再执行 `npm run build:ohos`。构建脚本会针对 `node-nim` 执行鸿蒙平台原生重建，构建产物会输出到 `release` 目录，产物类型为 `.hap`。
+
+如需对鸿蒙产物签名，可以在 `ohos-builder.json5` 的 `signing` 中配置签名信息：
+
+```json5
+signing: {
+  certPath: "path/to/app.cer",
+  profile: "path/to/profile.p7b",
+  keyAlias: "debugKey",
+  keyPassword: "******",
+  storeFile: "path/to/keystore.p12",
+  storePassword: "******"
+}
+```
+
+如果不希望证书路径、密钥库路径或密码等敏感信息落在仓库中，可以保持 `ohos-builder.json5` 中 `signing` 为空，并通过环境变量配置。关键环境变量如下：
+
+- `OHAP_SIGN_PROFILE`：签名 Profile 文件路径，或使用 `OHAP_SIGN_PROFILE_BASE64` 传入 Base64 内容。
+- `OHAP_SIGN_CERT`：签名证书文件路径，或使用 `OHAP_SIGN_CERT_BASE64` 传入 Base64 内容。
+- `OHAP_SIGN_STORE_FILE`：签名密钥库文件路径，或使用 `OHAP_SIGN_STORE_FILE_BASE64` 传入 Base64 内容。
+- `OHAP_SIGN_KEY_ALIAS`：密钥别名，未配置时默认为 `debugKey`。
+- `OHAP_SIGN_KEY_PASSWORD`：密钥密码。
+- `OHAP_SIGN_STORE_PASSWORD`：密钥库密码。
+- `OHAP_SIGN_CONFIG_NAME`：签名配置名称，未配置时默认为 `default`。
+- `OHAP_SIGN_TYPE`：签名类型，未配置时默认为 `HarmonyOS`。
+- `OHAP_SIGN_ALG`：签名算法，未配置时默认为 `SHA256withECDSA`。
+- `OHAP_REQUIRE_TEAM_SIGNING`：设置为 `true` 时要求必须提供签名配置，CI 的 `ohos` 任务会开启该配置。
+- `OHAP_SIGN_MATERIAL_DIR` 或 `OHAP_SIGN_MATERIAL_TAR_BASE64`：当通过 `*_BASE64` 传入签名文件，且 Hvigor 需要额外 `material` 目录时使用。
+- `OHAP_APP_IDENTIFIER`：可选，用于校验签名 Profile 中的 `app-identifier` 是否符合预期。
+
 ## 相关文档
 
 - IM UIKit 的功能清单，请参考 [IM UIKit 功能概览](https://doc.yunxin.163.com/messaging-uikit/concept/zMzMDQ2MTg)。

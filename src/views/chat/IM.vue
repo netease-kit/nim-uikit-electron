@@ -251,18 +251,22 @@ onUnmounted(() => {
 
 <style scoped>
 .container-wrapper {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
   overflow: hidden;
 }
 .container {
-  width: 100%;
-  height: 100%;
+  position: absolute;
+  inset: 0;
+  width: auto;
+  height: auto;
+  min-width: 0;
+  max-width: none;
   box-shadow: 0 0 10px 0 rgba(0, 0, 0, 0.1);
-  position: relative;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   background: #fff;
   overflow: hidden;
 }
@@ -293,6 +297,7 @@ onUnmounted(() => {
   width: 100%;
   height: calc(100% - 60px);
   display: flex;
+  min-width: 0;
 }
 
 .left {
@@ -351,6 +356,7 @@ onUnmounted(() => {
 
 .right {
   flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   height: 100%;

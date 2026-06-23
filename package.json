@@ -12,20 +12,25 @@
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc && vite build && electron-builder",
+    "build:ohos": "node scripts/ohos/build.mjs",
+    "build:ohos:install": "OHOS_INSTALL=1 node scripts/ohos/build.mjs",
     "preview": "vite preview",
+    "test": "vitest run",
     "lint": "eslint . --ext .vue,.js,.ts,.jsx,.tsx --fix"
   },
   "dependencies": {
     "@xkit-yx/utils": "^0.7.2",
     "image-size": "^2.0.2",
+    "markstream-vue": "^0.0.13",
     "mitt": "^3.0.1",
     "mobx": "^6.6.1",
-    "node-nim": "^10.9.72",
+    "node-nim": "^10.10.1-beta.76",
     "vue": "^3.4.21",
     "vue-router": "^4.5.0",
     "vue-virtual-scroller": "^2.0.0-beta.8"
   },
   "devDependencies": {
+    "@electron/asar": "^3.4.1",
     "@types/image-size": "^0.8.0",
     "@typescript-eslint/eslint-plugin": "^8.26.0",
     "@typescript-eslint/parser": "^8.23.0",
@@ -44,6 +49,7 @@
     "vite": "^5.1.6",
     "vite-plugin-electron": "^0.28.6",
     "vite-plugin-electron-renderer": "^0.14.5",
+    "vitest": "^1.6.1",
     "vue-eslint-parser": "^9.4.3",
     "vue-tsc": "^2.0.26"
   },

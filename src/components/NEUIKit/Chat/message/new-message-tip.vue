@@ -12,12 +12,14 @@
 import { t } from "../../utils/i18n";
 import Icon from "../../CommonComponents/Icon.vue";
 
-withDefaults(
+const props = withDefaults(
   defineProps<{
     visible: boolean;
+    isMultiSelect?: boolean;
   }>(),
   {
     visible: false,
+    isMultiSelect: false,
   }
 );
 
@@ -33,12 +35,13 @@ const handleClick = () => {
 <style scoped>
 .new-msg-tip {
   position: absolute;
-  bottom: 80px;
+  bottom: v-bind("props.isMultiSelect ? '180px' : '80px'");
   left: 50%;
   transform: translateX(-50%);
   z-index: 1000;
   cursor: pointer;
   animation: slideUp 0.3s ease-out;
+  transition: bottom 0.3s ease;
 }
 
 .new-msg-tip-content {

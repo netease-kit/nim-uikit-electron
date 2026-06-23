@@ -9,6 +9,7 @@ import { TeamMemberStore } from "./teamMembers";
 import { SysMsgStore } from "./sysMsgs";
 import { UserStore } from "./users";
 import { AIUserStore } from "./aiUsers";
+import { TopicStore } from "./topic";
 import { UiStore } from "./ui";
 import { StorageStore } from "./storage";
 import { ContactType, Relation, LocalOptions } from "./types";
@@ -46,6 +47,7 @@ class RootStore {
     allowTransferTeamOwner: false,
     teamManagerVisible: false,
     aiVisible: true,
+    aiBotsVisible: true,
     teamManagerLimit: 10,
     sendMsgBefore: async (options: any) => options,
     aiUserAgentProvider: {},
@@ -69,6 +71,7 @@ class RootStore {
   sysMsgStore: SysMsgStore;
   userStore: UserStore;
   aiUserStore: AIUserStore;
+  topicStore: TopicStore;
   subscriptionStore: SubscriptionStore;
   uiStore: UiStore;
   logger: typeof storeUtils.logger | null = null;
@@ -96,6 +99,7 @@ class RootStore {
       allowTransferTeamOwner: false,
       teamManagerVisible: false,
       aiVisible: true,
+      aiBotsVisible: true,
       teamManagerLimit: 10,
       sendMsgBefore: async (options: any) => options,
       aiUserAgentProvider: {},
@@ -141,6 +145,7 @@ class RootStore {
     this.sysMsgStore = new SysMsgStore(this, nim);
     this.userStore = new UserStore(this, nim);
     this.aiUserStore = new AIUserStore(this, nim, this.localOptions);
+    this.topicStore = new TopicStore(this, nim);
     this.uiStore = new UiStore(this, this.localOptions);
     this.storageStore = new StorageStore(this, nim);
     this.subscriptionStore = new SubscriptionStore(this, nim);
@@ -181,8 +186,28 @@ class RootStore {
     this.sysMsgStore.resetState();
     this.userStore.resetState();
     this.aiUserStore.resetState();
+    this.topicStore.resetState();
     this.uiStore.resetState();
     this.subscriptionStore.resetState();
+  }
+
+  isAIBotTopicConversation(conversationId: string): boolean {
+    const conversationType = this.nim.conversationIdUtil?.parseConversationType(conversationId);
+    if (
+      conversationType !== V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_P2P
+    ) {
+      return false;
+    }
+
+    const targetId = this.nim.conversationIdUtil?.parseConversationTargetId(conversationId) || "";
+    if (!targetId) {
+      return false;
+    }
+
+    return (
+      this.aiUserStore.isAIBot(targetId) ||
+      this.uiStore.getRelation(targetId).relation === "aiBot"
+    );
   }
 
   /**
@@ -205,6 +230,7 @@ class RootStore {
     this.sysMsgStore.destroy();
     this.userStore.destroy();
     this.aiUserStore.destroy();
+    this.topicStore.destroy();
     this.uiStore.destroy();
     this.subscriptionStore.destroy();
   }
@@ -244,6 +270,7 @@ export {
   SysMsgStore,
   UserStore,
   AIUserStore,
+  TopicStore,
   UiStore,
   StorageStore,
   SubscriptionStore,

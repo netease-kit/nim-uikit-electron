@@ -47,12 +47,23 @@
           <Icon iconClassName="menu-icon" :size="36" type="icon-team2" />
           <span class="menu-text">{{ t("teamMenuText") }}</span>
         </div>
+        <div
+          v-if="store?.localOptions.aiBotsVisible"
+          class="menu-item"
+          :class="{ active: activeTab === 'robots' }"
+          @click="setActiveTab('robots')"
+        >
+          <div class="menu-icon-bot">
+            <Icon :size="21" type="icon-bot" />
+          </div>
+          <span class="menu-text">{{ t("myRobotsText") }}</span>
+        </div>
       </div>
     </div>
 
     <!-- 右侧内容区域 -->
     <div class="content-area">
-      <div v-if="getContentTitle()" class="content-header">
+      <div v-if="getContentTitle() && activeTab !== 'robots'" class="content-header">
         <h3>{{ getContentTitle() }}</h3>
         <span class="black-list-sub-title" v-if="activeTab === 'blacklist'">
           {{ "(" + t("blacklistSubTitle") + ")" }}
@@ -76,6 +87,11 @@
           v-else-if="activeTab === 'groups'"
           @onGroupItemClick="emit('onGroupItemClick')"
         />
+        <!-- 我的机器人 -->
+        <BotList
+          v-else-if="activeTab === 'robots'"
+          @afterSendMsgClick="emit('afterSendMsgClick')"
+        />
         <!-- 默认欢迎页面 -->
         <div v-else class="welcome-content">
           <Welcome />
@@ -93,6 +109,7 @@ import FriendList from "./friend/friend-list.vue";
 import TeamList from "./team-list.vue";
 import BlackList from "./black-list.vue";
 import ValidList from "./valid-list.vue";
+import BotList from "./bot-list.vue";
 import { onUnmounted, ref } from "vue";
 import { autorun } from "mobx";
 import { t } from "../utils/i18n";
@@ -109,7 +126,7 @@ const unreadSysMsgCount = ref(0);
 /** 未读监听 */
 let unreadWatch = () => {};
 
-const activeTab = ref<"validMsg" | "blacklist" | "friends" | "groups" | "">("");
+const activeTab = ref<"validMsg" | "blacklist" | "friends" | "groups" | "robots" | "">("");
 
 trackInit("ContactUIKit");
 
@@ -126,6 +143,7 @@ onMounted(() => {
     friendList: "friends",
     msgList: "validMsg",
     aiList: "friends",
+    robotList: "robots",
   };
   const selected = store?.uiStore.selectedContactType as ContactType;
   activeTab.value = (selected ? storeToUIMap[selected] : "") as any;
@@ -135,13 +153,14 @@ onMounted(() => {
 });
 
 /** 设置当前激活的tab */
-const setActiveTab = (tab: "validMsg" | "blacklist" | "friends" | "groups") => {
+const setActiveTab = (tab: "validMsg" | "blacklist" | "friends" | "groups" | "robots") => {
   activeTab.value = tab;
   const uiToStoreMap: Record<string, ContactType> = {
     validMsg: "msgList",
     blacklist: "blackList",
     friends: "friendList",
     groups: "groupList",
+    robots: "robotList",
   };
   store?.uiStore.selectContactType(uiToStoreMap[tab]);
   if (tab === "validMsg") {
@@ -156,6 +175,7 @@ const getContentTitle = () => {
     blacklist: t("blacklistText"),
     friends: t("myFriendsText"),
     groups: t("teamMenuText"),
+    robots: t("myRobotsText"),
   };
   return titleMap[activeTab.value];
 };
@@ -295,6 +315,18 @@ onUnmounted(() => {
 
 .menu-icon-friend {
   background-color: #537ff4;
+  border-radius: 50%;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-right: 12px;
+}
+
+.menu-icon-bot {
+  background-color: #f5786a;
   border-radius: 50%;
   width: 36px;
   height: 36px;

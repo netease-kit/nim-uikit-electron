@@ -164,5 +164,10 @@ export class ConnectStore {
     if (this.localOptions.aiVisible) {
       this.rootStore.aiUserStore.getAIUserListActive();
     }
+
+    // 获取用户级 AI Bot
+    if (this.localOptions.aiBotsVisible) {
+      this.rootStore.aiUserStore.getUserAIBotListActive();
+    }
   }
 }

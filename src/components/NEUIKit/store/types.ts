@@ -6,6 +6,7 @@ import {
   V2NIMLocalConversation,
   V2NIMTeamJoinActionInfo,
   V2NIMSendMessageParams,
+  V2NIMTopic,
 } from "node-nim/types/v2_def/v2_nim_struct_def";
 import {
   V2NIMTeamAgreeMode,
@@ -56,6 +57,28 @@ export interface AIUserAgentProvider {
   getAITranslateLangs?(user: V2NIMAIUser[]): string[];
 }
 
+export interface QuickCommentSummaryForUI {
+  index: number;
+  iconType: string;
+  count: number;
+  operatorIds: string[];
+  addedBySelf: boolean;
+}
+
+export interface QuickCommentCacheEntry {
+  messageClientId: string;
+  summaries: QuickCommentSummaryForUI[];
+  loaded: boolean;
+  complete: boolean;
+  updatedAt: number;
+}
+
+export interface EmojiPickItem {
+  key: string;
+  type: string;
+  index: number;
+}
+
 export interface V2NIMMessageForUI extends V2NIMMessage {
   // 上传进度 0-100
   uploadProgress?: number;
@@ -101,6 +124,90 @@ export interface V2NIMMessageForUI extends V2NIMMessage {
   __kit__senderId?: string;
   // 原始消息上的 isSelf
   __kit__isSelf?: boolean;
+  // 回复引用不可用状态
+  replyState?: "deleted" | "recalled" | "notLoaded";
+  // 快捷评论摘要
+  quickCommentSummaries?: QuickCommentSummaryForUI[];
+  // 快捷评论是否已加载过，空评论也会标记为已加载
+  quickCommentLoaded?: boolean;
+}
+
+export type TopicSelectedState =
+  | { type: "none" }
+  | { type: "draft"; conversationId: string; topicId?: string }
+  | { type: "topic"; conversationId: string; topicId: string };
+
+export interface TopicSummaryState {
+  message?: V2NIMMessage;
+  text: string;
+  time?: number;
+  loading: boolean;
+  error?: Error;
+}
+
+export interface TopicRowForUI {
+  topic: V2NIMTopic;
+  topicId: string;
+  conversationId: string;
+  title: string;
+  colorIndex: number;
+  summary: TopicSummaryState;
+  timeText: string;
+  hasUnread: boolean;
+}
+
+export interface TopicDraftState {
+  conversationId: string;
+  topicId?: string;
+  createdAt: number;
+}
+
+export type TopicFirstMessageDraftStatus = "sending" | "failed" | "succeeded";
+
+export interface TopicFirstMessageDraftState {
+  conversationId: string;
+  topicKey: string;
+  messageClientId?: string;
+  message: V2NIMMessageForUI;
+  options: TopicSendOptions;
+  status: TopicFirstMessageDraftStatus;
+  createdAt: number;
+  updatedAt: number;
+  realTopicId?: string;
+}
+
+export interface TopicConversationState {
+  conversationId: string;
+  topics: Map<string, V2NIMTopic>;
+  topicList: V2NIMTopic[];
+  topicRows: TopicRowForUI[];
+  order: string[];
+  hasMore: boolean;
+  nextToken: string;
+  anchorTime?: number;
+  loading: boolean;
+  loadingMore: boolean;
+  loaded: boolean;
+  error?: Error;
+  selected: TopicSelectedState;
+  draft?: TopicDraftState;
+  summaries: Map<string, TopicSummaryState>;
+  messages: Map<string, V2NIMMessage[]>;
+  firstMessageDrafts: Map<string, TopicFirstMessageDraftState>;
+  messageLoading: Map<string, boolean>;
+  messageLoadingMore: Map<string, boolean>;
+  messageHasMore: Map<string, boolean>;
+  messageAnchor: Map<string, V2NIMMessage | undefined>;
+  messageError: Map<string, Error | undefined>;
+  readTime: number;
+  empty: boolean;
+}
+
+export interface TopicSendOptions {
+  previewImg?: string;
+  previewWidth?: number;
+  previewHeight?: number;
+  progress?: (percentage: number) => boolean | void;
 }
 
 export interface LocalOptions {
@@ -166,6 +273,10 @@ export interface LocalOptions {
    */
   aiVisible?: boolean;
   /**
+   * 是否启用 kit 中的 AI 机器人能力，默认 true。
+   */
+  aiBotsVisible?: boolean;
+  /**
     控制是否启用群聊功能。默认true，如果设为 false，所有与群相关的功能将会被隐藏。
    */
   enableTeam?: boolean;
@@ -222,9 +333,15 @@ export interface LocalOptions {
   enableCloudSearch?: boolean;
 }
 
-export type ContactType = "blackList" | "groupList" | "friendList" | "msgList" | "aiList";
+export type ContactType =
+  | "blackList"
+  | "groupList"
+  | "friendList"
+  | "msgList"
+  | "aiList"
+  | "robotList";
 
-export type Relation = "friend" | "stranger" | "myself" | "ai";
+export type Relation = "friend" | "stranger" | "myself" | "ai" | "aiBot";
 
 export interface AIUserServerExt {
   pinDefault?: number;

@@ -2,7 +2,7 @@
   <div v-if="visible" class="reply-msg-wrapper">
     <!-- replyMsg 不存在 说明回复的消息被删除或者撤回 -->
     <div class="reply-msg-not-find" v-if="props.replyMsg?.messageClientId == 'noFind'">
-      <span>{{ t("replyNotFindText") }}</span>
+      <span>{{ unavailableText }}</span>
     </div>
     <Popover
       v-else
@@ -13,7 +13,7 @@
       v-model="popoverVisible"
     >
       <!-- 移除 @click 事件，让 Popover 自己处理点击 -->
-      <div class="reply-msg">
+      <div class="reply-msg" @click="handleReplyClick">
         <div v-if="replyMsg" class="reply-msg-name-wrapper">
           <div class="reply-msg-name-content">
             <Appellation
@@ -47,20 +47,46 @@
 <script lang="ts" setup>
 /** 回复消息组件 */
 import { t } from "../../utils/i18n";
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import { getReplyMsgTypeText } from "../../utils/msg";
 import type { V2NIMMessageForUI } from "../../store/types";
-import { V2NIMConst } from "../../utils/constants";
+import { events, V2NIMConst } from "../../utils/constants";
 
 import Appellation from "../../CommonComponents/Appellation.vue";
 import MessageOneLine from "../../CommonComponents/MessageOneLine.vue";
 //@ts-ignore
 import Popover from "../../CommonComponents/Popover.vue";
 import MessageItemContent from "./message-item-content.vue";
+import emitter from "../../utils/eventBus";
 
 const props = withDefaults(defineProps<{ visible: boolean; replyMsg?: V2NIMMessageForUI }>(), {});
 // Popover 显示状态
 const popoverVisible = ref(false);
+
+const unavailableText = computed(() => {
+  switch (props.replyMsg?.replyState) {
+    case "deleted":
+      return t("replyDeletedText");
+    case "recalled":
+      return t("replyRecalledText");
+    case "notLoaded":
+      return t("replyNotLoadedText");
+    default:
+      return t("replyNotFindText");
+  }
+});
+
+const handleReplyClick = () => {
+  const messageClientId = props.replyMsg?.messageClientId;
+  if (!messageClientId) {
+    return;
+  }
+  emitter.emit(events.SCROLL_MSG_INTO_VIEW, messageClientId);
+  emitter.emit("highlightMessage", {
+    messageId: messageClientId,
+    duration: 800,
+  });
+};
 </script>
 
 <style scoped>

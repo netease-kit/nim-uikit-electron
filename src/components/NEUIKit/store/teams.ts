@@ -29,6 +29,8 @@ import * as storeUtils from "./utils";
 /**Mobx 可观察对象，负责管理群组的子 store */
 export class TeamStore {
   teams: Map<string, V2NIMTeam> = new Map();
+  /** 群消息免打扰模式 Map，key 为 teamId */
+  teamMessageMuteModes: Map<string, V2NIMTeamMessageMuteMode> = new Map();
   logger: typeof storeUtils.logger | null = null;
 
   constructor(
@@ -85,6 +87,7 @@ export class TeamStore {
 
   resetState(): void {
     this.teams.clear();
+    this.teamMessageMuteModes.clear();
   }
 
   /**
@@ -436,6 +439,8 @@ export class TeamStore {
         muteMode,
       });
       await this.nim.settingService?.setTeamMessageMuteMode(teamId, teamType, muteMode);
+      // 更新本地状态
+      this.teamMessageMuteModes.set(teamId, muteMode);
 
       this.logger?.log("setTeamMessageMuteModeActive success", {
         teamId,
@@ -587,6 +592,8 @@ export class TeamStore {
     try {
       this.logger?.log("getTeamMessageMuteModeActive", teamId, teamType);
       const muteMode = await this.nim.settingService?.getTeamMessageMuteMode(teamId, teamType);
+      // 保存到本地状态
+      this.teamMessageMuteModes.set(teamId, muteMode as V2NIMTeamMessageMuteMode);
 
       this.logger?.log("getTeamMessageMuteModeActive success", teamId, teamType);
       return muteMode as V2NIMTeamMessageMuteMode;
@@ -691,5 +698,7 @@ export class TeamStore {
     muteMode: V2NIMTeamMessageMuteMode
   ) {
     this.logger?.log("teamService _onTeamMessageMuteModeChanged: ", teamId, teamType, muteMode);
+    // 更新本地状态
+    this.teamMessageMuteModes.set(teamId, muteMode);
   }
 }

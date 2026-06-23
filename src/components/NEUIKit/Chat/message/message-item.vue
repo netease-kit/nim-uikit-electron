@@ -112,8 +112,18 @@
           >
             {{ appellation }}
           </div>
-          <MessageBubble :msg="msg" :bg-visible="true" :readonly="props.readonly">
-            <MessageItemContent :msg="msg" :replyMsg="replyMsg" :readonly="props.readonly" />
+          <MessageBubble
+            :msg="msg"
+            :bg-visible="true"
+            :readonly="props.readonly"
+            :quick-comment-summaries="quickCommentSummaries"
+          >
+            <MessageItemContent
+              :msg="msg"
+              :replyMsg="replyMsg"
+              :readonly="props.readonly"
+              :showReply="!props.readonly"
+            />
           </MessageBubble>
           <!-- 消息时间 -->
           <div class="msg-timestamp" :class="{ 'msg-timestamp-self': msg.isSelf }">
@@ -127,7 +137,7 @@
 
 <script lang="ts" setup>
 /** 消息项 */
-import { ref, computed, onMounted, onUnmounted } from "vue";
+import { ref, computed, onMounted, onUnmounted, watch } from "vue";
 
 import MessageAvatar from "./message-avatar.vue";
 import MessageBubble from "./message-bubble.vue";
@@ -138,7 +148,7 @@ import { autorun } from "mobx";
 import { t } from "../../utils/i18n";
 import { V2NIMConst } from "../../utils/constants";
 import emitter from "../../utils/eventBus";
-import type { V2NIMMessageForUI } from "../../store/types";
+import type { QuickCommentSummaryForUI, V2NIMMessageForUI } from "../../store/types";
 import { getContextState } from "../../utils/init";
 import type { V2NIMConversationType } from "node-nim";
 
@@ -160,6 +170,7 @@ const { store, nim } = getContextState();
 
 const isMultiSelectMode = ref(false);
 const isSelected = ref(false);
+const quickCommentSummaries = ref<QuickCommentSummaryForUI[]>([]);
 
 const multiSelectStateWatch = autorun(() => {
   isMultiSelectMode.value = store?.uiStore.isMultiSelectMode || false;
@@ -167,6 +178,15 @@ const multiSelectStateWatch = autorun(() => {
     isSelected.value =
       store?.uiStore.selectedMessageIds.includes(props.msg.messageClientId as string) || false;
   }
+});
+
+const quickCommentWatch = autorun(() => {
+  const messageClientId = props.msg.messageClientId;
+  const summaries = messageClientId
+    ? store?.msgStore.quickCommentCache.get(messageClientId)?.summaries
+    : undefined;
+
+  quickCommentSummaries.value = [...(summaries || props.msg.quickCommentSummaries || [])];
 });
 
 const toggleSelection = () => {
@@ -272,6 +292,33 @@ const handleHighlightMessage = (data: any) => {
   }
 };
 
+const canLoadQuickComments = computed(() => {
+  return (
+    !props.readonly &&
+    !!props.msg.messageClientId &&
+    !!props.msg.conversationId &&
+    props.msg.messageType !== V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_NOTIFICATION &&
+    !(
+      props.msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_CUSTOM &&
+      !!props.msg.recallType
+    ) &&
+    props.msg.sendingState !==
+      V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_SENDING &&
+    props.msg.sendingState !==
+      V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED
+  );
+});
+
+const loadQuickComments = () => {
+  if (!canLoadQuickComments.value) {
+    return;
+  }
+
+  store?.msgStore.loadQuickCommentsForMessage(props.msg).catch((error) => {
+    store?.logger?.warn("loadQuickCommentsForMessage failed: ", error);
+  });
+};
+
 // 监听昵称变化
 const uninstallAppellationWatch = autorun(() => {
   if (props.readonly) {
@@ -297,7 +344,15 @@ const uninstallAppellationWatch = autorun(() => {
 onMounted(() => {
   // 监听高亮消息事件
   emitter.on("highlightMessage", handleHighlightMessage);
+  loadQuickComments();
 });
+
+watch(
+  () => props.msg.messageClientId,
+  () => {
+    loadQuickComments();
+  }
+);
 
 onUnmounted(() => {
   // 清理事件监听器和定时器
@@ -305,6 +360,7 @@ onUnmounted(() => {
   clearHighlight();
   uninstallAppellationWatch();
   multiSelectStateWatch();
+  quickCommentWatch();
 });
 </script>
 
@@ -341,6 +397,14 @@ onUnmounted(() => {
   align-items: flex-start;
   font-size: 14px;
 }
+
+.msg-common:hover :deep(.msg-bubble-shell-with-actions .msg-hover-actions),
+.msg-common:focus-within :deep(.msg-bubble-shell-with-actions .msg-hover-actions) {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
 .msg-pin {
   opacity: 1;
   background: #fffbea;

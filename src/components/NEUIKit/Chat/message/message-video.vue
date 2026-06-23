@@ -125,6 +125,15 @@ const isSending = computed(() => {
   );
 });
 
+const isFailed = computed(() => {
+  const errorCode = props.msg.messageStatus?.errorCode;
+  return (
+    props.msg.sendingState ===
+      V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED ||
+    (errorCode !== undefined && !isMessageNoError(errorCode))
+  );
+});
+
 // 判断是否正在上传（发送中且进度小于100%时显示进度条）
 const isUploading = computed(() => {
   const progress = props.msg.uploadProgress;
@@ -325,6 +334,7 @@ const handleVideoClick = async () => {
   audio?.pause();
 
   if (
+    isFailed.value ||
     !(
       isMessageNoError(props.msg.messageStatus?.errorCode) ||
       props.msg.sendingState ===

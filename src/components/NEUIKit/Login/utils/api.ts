@@ -1,9 +1,9 @@
-import { APP_KEY } from "../../utils/constants";
-const loginByCodeHeader = {
-  appKey: APP_KEY,
+const getLoginByCodeHeader = (appKey: string) => ({
+  appKey,
   parentScope: 2,
   scope: 7,
-};
+});
+
 const urlMap = {
   getLoginSmsCode: "/userCenter/v1/auth/sendLoginSmsCode",
   loginRegisterByCode: "/userCenter/v1/auth/loginRegisterByCode",
@@ -13,20 +13,25 @@ const urlMap = {
 type LoginSmsCodeRes = {
   isFirstRegister: boolean;
 };
-export const getLoginSmsCode = (data: {
+export const getLoginSmsCode = ({
+  appKey,
+  baseUrl,
+  mobile,
+}: {
+  appKey: string;
   baseUrl: string;
   mobile: string;
 }): Promise<LoginSmsCodeRes> => {
-  const url = data.baseUrl + urlMap.getLoginSmsCode;
+  const url = baseUrl + urlMap.getLoginSmsCode;
 
   return fetch(url, {
     method: "POST",
     //@ts-ignore
     headers: {
       "Content-Type": "application/json",
-      ...loginByCodeHeader,
+      ...getLoginByCodeHeader(appKey),
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ mobile }),
   }).then(async (response) => {
     const responseData = await response.json();
     if (responseData.code !== 200) {
@@ -36,21 +41,27 @@ export const getLoginSmsCode = (data: {
   });
 };
 
-export const loginRegisterByCode = (data: {
+export const loginRegisterByCode = ({
+  appKey,
+  baseUrl,
+  mobile,
+  smsCode,
+}: {
+  appKey: string;
   mobile: string;
   smsCode: string;
   baseUrl: string;
 }): Promise<LoginRegisterByCodeRes> => {
-  const url = data.baseUrl + urlMap.loginRegisterByCode;
+  const url = baseUrl + urlMap.loginRegisterByCode;
 
   return fetch(url, {
     method: "POST",
     //@ts-ignore
     headers: {
       "Content-Type": "application/json",
-      ...loginByCodeHeader,
+      ...getLoginByCodeHeader(appKey),
     },
-    body: JSON.stringify(data),
+    body: JSON.stringify({ mobile, smsCode }),
   }).then(async (response) => {
     const responseData = await response.json();
     if (responseData.code !== 200) {

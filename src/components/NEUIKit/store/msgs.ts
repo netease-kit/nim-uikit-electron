@@ -1,8 +1,16 @@
 import RootStore from ".";
 import { makeAutoObservable } from "mobx";
-import { AI_MESSAGE_LIMIT, AT_ALL_ACCOUNT, HISTORY_LIMIT, RECALL_TIME } from "./constant";
+import {
+  AI_MESSAGE_LIMIT,
+  AT_ALL_ACCOUNT,
+  HISTORY_LIMIT,
+  QUICK_COMMENT_CACHE_LIMIT,
+  RECALL_TIME,
+} from "./constant";
 import {
   LocalOptions,
+  QuickCommentCacheEntry,
+  QuickCommentSummaryForUI,
   V2NIMLocalConversationForUI,
   V2NIMMessageForUI,
   YxAitMsg,
@@ -34,10 +42,14 @@ import {
   V2NIMMessageAIStreamStopParams,
   V2NIMMessageAIRegenParams,
   V2NIMError,
+  V2NIMMessageQuickComment,
+  V2NIMMessageQuickCommentNotification,
+  V2NIMMessageQuickCommentPushConfig,
 } from "node-nim/types/v2_def/v2_nim_struct_def";
 import * as storeUtils from "./utils";
 import { showNotification } from "../utils/electron";
 import { getMsgContentTipByType } from "../utils/msg";
+import { getEmojiIconTypeByIndex } from "../utils/emoji";
 import { t } from "../utils/i18n";
 import PinMsgsMap, { PinInfo, PinInfos } from "./pinMsgsMap";
 import {
@@ -59,6 +71,10 @@ export class MsgStore {
   pinMsgs = new PinMsgsMap();
   /** 收藏消息 */
   collectionMsgs: Map<string, V2NIMMessage> = new Map();
+  /** 快捷评论缓存 */
+  quickCommentCache: Map<string, QuickCommentCacheEntry> = new Map();
+  private quickCommentLoadPromises: Map<string, Promise<QuickCommentSummaryForUI[]>> = new Map();
+  private quickCommentWritePromises: Map<string, Promise<void>> = new Map();
 
   /** 搜索历史消息结果 */
   constructor(
@@ -123,6 +139,9 @@ export class MsgStore {
     this.msgs.clear();
     this.replyMsgs.clear();
     this.pinMsgs.clear();
+    this.quickCommentCache.clear();
+    this.quickCommentLoadPromises.clear();
+    this.quickCommentWritePromises.clear();
   }
 
   /**
@@ -233,6 +252,141 @@ export class MsgStore {
       this.logger?.warn("deleteMsgActive failed, but delete msgs from memory: ", msgs, error);
       throw error;
     }
+  }
+
+  getQuickCommentSummaries(messageClientId?: string): QuickCommentSummaryForUI[] {
+    if (!messageClientId) {
+      return [];
+    }
+
+    return this._getQuickCommentCacheEntry(messageClientId)?.summaries || [];
+  }
+
+  isQuickCommentOperating(messageClientId?: string, index?: number): boolean {
+    if (!messageClientId) {
+      return false;
+    }
+
+    if (index === undefined) {
+      return Array.from(this.quickCommentWritePromises.keys()).some((key) =>
+        key.startsWith(`${messageClientId}:`)
+      );
+    }
+
+    return this.quickCommentWritePromises.has(
+      this._getQuickCommentWriteKey(messageClientId, index)
+    );
+  }
+
+  async loadQuickCommentsForMessage(
+    msg: V2NIMMessageForUI,
+    force = false
+  ): Promise<QuickCommentSummaryForUI[]> {
+    const messageClientId = msg.messageClientId;
+
+    if (!messageClientId) {
+      return [];
+    }
+
+    if (!force) {
+      const cache = this._getQuickCommentCacheEntry(messageClientId);
+
+      if (cache?.complete) {
+        this._syncQuickCommentsToMsg(msg.conversationId, messageClientId, cache.summaries, true);
+        return cache.summaries;
+      }
+    }
+
+    const existingPromise = this.quickCommentLoadPromises.get(messageClientId);
+
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const loadPromise = this._fetchQuickCommentsForMessage(msg)
+      .then((summaries) => {
+        this._setQuickCommentCacheEntry(messageClientId, summaries, true);
+        this._syncQuickCommentsToMsg(msg.conversationId, messageClientId, summaries, true);
+        return summaries;
+      })
+      .finally(() => {
+        this.quickCommentLoadPromises.delete(messageClientId);
+      });
+
+    this.quickCommentLoadPromises.set(messageClientId, loadPromise);
+    return loadPromise;
+  }
+
+  async toggleQuickComment(msg: V2NIMMessageForUI, index: number): Promise<void> {
+    const summary = this.getQuickCommentSummaries(msg.messageClientId).find(
+      (item) => item.index === index
+    );
+
+    if (summary?.addedBySelf) {
+      await this.removeQuickCommentActive(msg, index);
+    } else {
+      await this.addQuickCommentActive(msg, index);
+    }
+  }
+
+  async addQuickCommentActive(msg: V2NIMMessageForUI, index: number): Promise<void> {
+    const messageClientId = msg.messageClientId;
+
+    if (!messageClientId) {
+      return;
+    }
+
+    const writeKey = this._getQuickCommentWriteKey(messageClientId, index);
+    const existingPromise = this.quickCommentWritePromises.get(writeKey);
+
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const writePromise = (async () => {
+      await this.nim?.messageService?.addQuickComment(
+        this.handleMsgForSDK(msg),
+        String(index),
+        "",
+        {
+          needPush: false,
+          needBadge: false,
+        } as V2NIMMessageQuickCommentPushConfig
+      );
+      this._applyLocalQuickCommentChange(msg, index, true);
+      this._refreshQuickCommentsAfterWrite(msg);
+    })().finally(() => {
+      this.quickCommentWritePromises.delete(writeKey);
+    });
+
+    this.quickCommentWritePromises.set(writeKey, writePromise);
+    return writePromise;
+  }
+
+  async removeQuickCommentActive(msg: V2NIMMessageForUI, index: number): Promise<void> {
+    const messageClientId = msg.messageClientId;
+
+    if (!messageClientId) {
+      return;
+    }
+
+    const writeKey = this._getQuickCommentWriteKey(messageClientId, index);
+    const existingPromise = this.quickCommentWritePromises.get(writeKey);
+
+    if (existingPromise) {
+      return existingPromise;
+    }
+
+    const writePromise = (async () => {
+      await this.nim?.messageService?.removeQuickComment(this._createMessageRefer(msg), index, "");
+      this._applyLocalQuickCommentChange(msg, index, false);
+      this._refreshQuickCommentsAfterWrite(msg);
+    })().finally(() => {
+      this.quickCommentWritePromises.delete(writeKey);
+    });
+
+    this.quickCommentWritePromises.set(writeKey, writePromise);
+    return writePromise;
   }
 
   /**
@@ -1043,6 +1197,7 @@ export class MsgStore {
         // 这里做消息处理
         item = this.handleReceiveAIMsg(item);
         if (curPinMsgsMap) item = this.handleMsgPinState(item, curPinMsgsMap);
+        item = this._withQuickCommentState(item);
 
         return item;
       })
@@ -1078,6 +1233,10 @@ export class MsgStore {
             if (_msg.previewHeight && !newMsg.previewHeight) {
               newMsg.previewHeight = _msg.previewHeight;
             }
+            if (_msg.quickCommentLoaded && !newMsg.quickCommentLoaded) {
+              newMsg.quickCommentLoaded = _msg.quickCommentLoaded;
+              newMsg.quickCommentSummaries = _msg.quickCommentSummaries;
+            }
 
             _msgs.splice(_msgs.indexOf(_msg), 1, newMsg);
           }
@@ -1103,6 +1262,9 @@ export class MsgStore {
         this._handleClearMsgTimer(item);
       });
       this.msgs.clear();
+      this.quickCommentCache.clear();
+      this.quickCommentLoadPromises.clear();
+      this.quickCommentWritePromises.clear();
       return;
     }
 
@@ -1115,6 +1277,7 @@ export class MsgStore {
     if (!idClients || !idClients.length) {
       msgs.forEach((item) => {
         this._handleClearMsgTimer(item);
+        this._deleteQuickCommentCacheEntry(item.messageClientId);
       });
       this.msgs.delete(conversationId);
       return;
@@ -1133,6 +1296,7 @@ export class MsgStore {
 
         if (isDelete) {
           this._handleClearMsgTimer(msg);
+          this._deleteQuickCommentCacheEntry(msg.messageClientId);
         }
 
         return !isDelete;
@@ -1172,7 +1336,7 @@ export class MsgStore {
 
     const msg = msgs.findIndex((item) => item.messageClientId === idClient);
 
-    if (!msg) return;
+    if (msg === -1) return;
 
     this.msgs.set(
       conversationId,
@@ -1188,6 +1352,516 @@ export class MsgStore {
       }),
       this.rootStore.uiStore.selectedConversation === conversationId
     );
+  }
+
+  private async _fetchQuickCommentsForMessage(
+    msg: V2NIMMessage
+  ): Promise<QuickCommentSummaryForUI[]> {
+    if (!msg.messageClientId || !this.nim?.messageService?.getQuickCommentList) {
+      return [];
+    }
+
+    const result = await this.nim.messageService.getQuickCommentList([
+      this.handleMsgForSDK(msg as V2NIMMessageForUI),
+    ]);
+    const comments = this._getQuickCommentsFromResult(result, msg);
+
+    return this._aggregateQuickComments(comments);
+  }
+
+  private _getQuickCommentsFromResult(
+    result: unknown,
+    msg: V2NIMMessage
+  ): V2NIMMessageQuickComment[] {
+    if (!result) {
+      return [];
+    }
+
+    const possibleKeys = [
+      msg.messageClientId,
+      msg.messageServerId,
+      msg.messageClientId ? `${msg.conversationId || ""}_${msg.messageClientId}` : undefined,
+      msg.messageServerId ? `${msg.conversationId || ""}_${msg.messageServerId}` : undefined,
+    ].filter(Boolean) as string[];
+
+    const mapLikeResult = result as {
+      get?: (key: string) => unknown;
+      size?: number;
+      values?: () => Iterable<unknown>;
+    };
+
+    if (typeof mapLikeResult.get === "function") {
+      for (const key of possibleKeys) {
+        const comments = this._readQuickCommentList(mapLikeResult.get(key));
+
+        if (comments) {
+          return comments;
+        }
+      }
+
+      if (mapLikeResult.size === 1 && typeof mapLikeResult.values === "function") {
+        const comments = this._readQuickCommentList(Array.from(mapLikeResult.values())[0]);
+
+        if (comments) {
+          return comments;
+        }
+      }
+
+      return [];
+    }
+
+    const commentsFromItems = this._readQuickCommentResultItems(result, possibleKeys);
+
+    if (commentsFromItems) {
+      return commentsFromItems;
+    }
+
+    const resultRecord = this._asRecord(result);
+
+    if (!resultRecord) {
+      return [];
+    }
+
+    for (const key of possibleKeys) {
+      const comments = this._readQuickCommentList(resultRecord[key]);
+
+      if (comments) {
+        return comments;
+      }
+    }
+
+    const listKeys = [
+      "messageQuickCommentList",
+      "message_quick_comment_list",
+      "messageQuickComments",
+      "message_quick_comments",
+    ];
+
+    for (const key of listKeys) {
+      const comments = this._readQuickCommentResultItems(resultRecord[key], possibleKeys);
+
+      if (comments) {
+        return comments;
+      }
+    }
+
+    const directComments = this._readQuickCommentList(resultRecord);
+
+    if (directComments) {
+      return directComments;
+    }
+
+    const values = Object.values(resultRecord);
+
+    if (values.length === 1) {
+      return this._readQuickCommentList(values[0]) || [];
+    }
+
+    return [];
+  }
+
+  private _readQuickCommentResultItems(
+    result: unknown,
+    possibleKeys: string[]
+  ): V2NIMMessageQuickComment[] | undefined {
+    if (!Array.isArray(result)) {
+      return undefined;
+    }
+
+    const directComments = this._readQuickCommentList(result);
+
+    if (directComments) {
+      return directComments;
+    }
+
+    for (const item of result) {
+      const record = this._asRecord(item);
+
+      if (!record || !this._quickCommentResultRecordMatchesKeys(record, possibleKeys)) {
+        continue;
+      }
+
+      return this._readQuickCommentList(record) || [];
+    }
+
+    return undefined;
+  }
+
+  private _readQuickCommentList(value: unknown): V2NIMMessageQuickComment[] | undefined {
+    if (Array.isArray(value)) {
+      const comments = value
+        .map((item) => this._normalizeQuickComment(item))
+        .filter((item): item is V2NIMMessageQuickComment => !!item);
+
+      return comments.length || value.length === 0 ? comments : undefined;
+    }
+
+    const record = this._asRecord(value);
+
+    if (!record) {
+      return undefined;
+    }
+
+    const listKeys = ["quickCommentList", "quick_comment_list", "quickComments", "quick_comments"];
+
+    for (const key of listKeys) {
+      const comments = this._readQuickCommentList(record[key]);
+
+      if (comments) {
+        return comments;
+      }
+    }
+
+    const comment = this._normalizeQuickComment(record);
+
+    return comment ? [comment] : undefined;
+  }
+
+  private _quickCommentResultRecordMatchesKeys(
+    record: Record<string, unknown>,
+    possibleKeys: string[]
+  ): boolean {
+    const messageRefer =
+      this._asRecord(record.messageRefer) || this._asRecord(record.message_refer);
+    const keys = [
+      record.messageClientId,
+      record.message_client_id,
+      record.msgClientId,
+      record.msg_client_id,
+      record.messageServerId,
+      record.message_server_id,
+      messageRefer?.messageClientId,
+      messageRefer?.message_client_id,
+      messageRefer?.messageServerId,
+      messageRefer?.message_server_id,
+    ]
+      .filter((item) => item !== undefined && item !== null)
+      .map((item) => String(item));
+
+    return keys.some((key) => possibleKeys.includes(key));
+  }
+
+  private _normalizeQuickComment(value: unknown): V2NIMMessageQuickComment | undefined {
+    const record = this._asRecord(value);
+
+    if (!record) {
+      return undefined;
+    }
+
+    const index = Number(record.index ?? record.replyType ?? record.reply_type);
+
+    if (!Number.isFinite(index)) {
+      return undefined;
+    }
+
+    const operatorId =
+      record.operatorId ?? record.operator_id ?? record.fromAccount ?? record.from_account;
+    const comment: V2NIMMessageQuickComment = {
+      ...(record as V2NIMMessageQuickComment),
+      index,
+    };
+
+    if (operatorId !== undefined && operatorId !== null) {
+      comment.operatorId = String(operatorId);
+    }
+
+    if (!comment.messageRefer && record.message_refer) {
+      comment.messageRefer = record.message_refer as V2NIMMessageRefer;
+    }
+
+    if (!comment.serverExtension && typeof record.ext === "string") {
+      comment.serverExtension = record.ext;
+    }
+
+    return comment;
+  }
+
+  private _asRecord(value: unknown): Record<string, unknown> | undefined {
+    return typeof value === "object" && value !== null
+      ? (value as Record<string, unknown>)
+      : undefined;
+  }
+
+  private _aggregateQuickComments(
+    comments: V2NIMMessageQuickComment[]
+  ): QuickCommentSummaryForUI[] {
+    const summaryMap = new Map<number, QuickCommentSummaryForUI>();
+    const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
+
+    comments.forEach((comment) => {
+      const index = Number(comment.index);
+      const iconType = getEmojiIconTypeByIndex(index);
+
+      if (!iconType) {
+        return;
+      }
+
+      const summary = summaryMap.get(index) || {
+        index,
+        iconType,
+        count: 0,
+        operatorIds: [],
+        addedBySelf: false,
+      };
+
+      summary.count += 1;
+
+      if (comment.operatorId && !summary.operatorIds.includes(comment.operatorId)) {
+        summary.operatorIds.push(comment.operatorId);
+      }
+
+      if (comment.operatorId === myAccountId) {
+        summary.addedBySelf = true;
+      }
+
+      summaryMap.set(index, summary);
+    });
+
+    return Array.from(summaryMap.values()).sort((a, b) => a.index - b.index);
+  }
+
+  private _aggregateQuickCommentsFromNotification(
+    currentSummaries: QuickCommentSummaryForUI[],
+    notification: V2NIMMessageQuickCommentNotification
+  ): QuickCommentSummaryForUI[] {
+    const comment = notification.quickComment;
+    const index = Number(comment?.index);
+    const iconType = getEmojiIconTypeByIndex(index);
+
+    if (!comment || !iconType) {
+      return currentSummaries;
+    }
+
+    const nextSummaries = currentSummaries.map((item) => ({
+      ...item,
+      operatorIds: [...item.operatorIds],
+    }));
+    const targetIndex = nextSummaries.findIndex((item) => item.index === index);
+    const isRemove =
+      Number((notification as any).operationType) ===
+      V2NIMConst.V2NIMMessageQuickCommentType.V2NIM_MESSAGE_QUICK_COMMENT_TYPE_REMOVE;
+    const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
+
+    if (isRemove) {
+      if (targetIndex === -1) {
+        return nextSummaries;
+      }
+
+      const target = nextSummaries[targetIndex];
+
+      if (comment.operatorId) {
+        if (!target.operatorIds.includes(comment.operatorId)) {
+          return nextSummaries.sort((a, b) => a.index - b.index);
+        }
+
+        target.count = Math.max(0, target.count - 1);
+        target.operatorIds = target.operatorIds.filter(
+          (operatorId) => operatorId !== comment.operatorId
+        );
+      } else {
+        target.count = Math.max(0, target.count - 1);
+      }
+      if (comment.operatorId === myAccountId) {
+        target.addedBySelf = false;
+      }
+
+      return nextSummaries.filter((item) => item.count > 0).sort((a, b) => a.index - b.index);
+    }
+
+    if (targetIndex === -1) {
+      nextSummaries.push({
+        index,
+        iconType,
+        count: 1,
+        operatorIds: comment.operatorId ? [comment.operatorId] : [],
+        addedBySelf: comment.operatorId === myAccountId,
+      });
+    } else {
+      const target = nextSummaries[targetIndex];
+
+      if (comment.operatorId) {
+        if (!target.operatorIds.includes(comment.operatorId)) {
+          target.count += 1;
+          target.operatorIds.push(comment.operatorId);
+        }
+      } else {
+        target.count += 1;
+      }
+      if (comment.operatorId === myAccountId) {
+        target.addedBySelf = true;
+      }
+    }
+
+    return nextSummaries.sort((a, b) => a.index - b.index);
+  }
+
+  private _applyLocalQuickCommentChange(
+    msg: V2NIMMessageForUI,
+    index: number,
+    isAdd: boolean
+  ): void {
+    const messageClientId = msg.messageClientId;
+
+    if (!messageClientId) {
+      return;
+    }
+
+    const currentSummaries = this.getQuickCommentSummaries(messageClientId);
+    const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
+    const summaries = this._aggregateQuickCommentsFromNotification(currentSummaries, {
+      operationType: isAdd
+        ? V2NIMConst.V2NIMMessageQuickCommentType.V2NIM_MESSAGE_QUICK_COMMENT_TYPE_ADD
+        : V2NIMConst.V2NIMMessageQuickCommentType.V2NIM_MESSAGE_QUICK_COMMENT_TYPE_REMOVE,
+      quickComment: {
+        index,
+        operatorId: myAccountId,
+        messageRefer: this._createMessageRefer(msg),
+      },
+    } as unknown as V2NIMMessageQuickCommentNotification);
+
+    this._setQuickCommentCacheEntry(messageClientId, summaries, false);
+    this._syncQuickCommentsToMsg(msg.conversationId, messageClientId, summaries, true);
+  }
+
+  private _refreshQuickCommentsAfterWrite(msg: V2NIMMessageForUI): void {
+    this.loadQuickCommentsForMessage(msg, true).catch((error) => {
+      this.logger?.warn("_refreshQuickCommentsAfterWrite failed: ", error);
+    });
+  }
+
+  private _createQuickCommentsFromNotification(
+    notification: V2NIMMessageQuickCommentNotification
+  ): QuickCommentSummaryForUI[] | undefined {
+    const comment = notification.quickComment;
+    const index = Number(comment?.index);
+    const iconType = getEmojiIconTypeByIndex(index);
+    const isRemove =
+      Number((notification as any).operationType) ===
+      V2NIMConst.V2NIMMessageQuickCommentType.V2NIM_MESSAGE_QUICK_COMMENT_TYPE_REMOVE;
+
+    if (!comment || !iconType || isRemove) {
+      return undefined;
+    }
+
+    const myAccountId = this.rootStore.userStore.myUserInfo.accountId;
+
+    return [
+      {
+        index,
+        iconType,
+        count: 1,
+        operatorIds: comment.operatorId ? [comment.operatorId] : [],
+        addedBySelf: comment.operatorId === myAccountId,
+      },
+    ];
+  }
+
+  private _getQuickCommentCacheEntry(messageClientId: string): QuickCommentCacheEntry | undefined {
+    const entry = this.quickCommentCache.get(messageClientId);
+
+    if (!entry) {
+      return undefined;
+    }
+
+    this.quickCommentCache.delete(messageClientId);
+    this.quickCommentCache.set(messageClientId, {
+      ...entry,
+      updatedAt: Date.now(),
+    });
+
+    return this.quickCommentCache.get(messageClientId);
+  }
+
+  private _setQuickCommentCacheEntry(
+    messageClientId: string,
+    summaries: QuickCommentSummaryForUI[],
+    complete = true
+  ): void {
+    this.quickCommentCache.delete(messageClientId);
+    this.quickCommentCache.set(messageClientId, {
+      messageClientId,
+      summaries,
+      loaded: true,
+      complete,
+      updatedAt: Date.now(),
+    });
+    this._trimQuickCommentCache();
+  }
+
+  private _deleteQuickCommentCacheEntry(messageClientId?: string): void {
+    if (!messageClientId) {
+      return;
+    }
+
+    this.quickCommentCache.delete(messageClientId);
+    Array.from(this.quickCommentLoadPromises.keys())
+      .filter((key) => key === messageClientId)
+      .forEach((key) => this.quickCommentLoadPromises.delete(key));
+    Array.from(this.quickCommentWritePromises.keys())
+      .filter((key) => key.startsWith(`${messageClientId}:`))
+      .forEach((key) => this.quickCommentWritePromises.delete(key));
+  }
+
+  private _trimQuickCommentCache(): void {
+    while (this.quickCommentCache.size > QUICK_COMMENT_CACHE_LIMIT) {
+      const oldestKey = this.quickCommentCache.keys().next().value;
+
+      if (!oldestKey) {
+        return;
+      }
+
+      this.quickCommentCache.delete(oldestKey);
+    }
+  }
+
+  private _syncQuickCommentsToMsg(
+    conversationId: string | undefined,
+    messageClientId: string,
+    summaries: QuickCommentSummaryForUI[],
+    loaded: boolean
+  ): void {
+    if (!conversationId) {
+      return;
+    }
+
+    this.updateMsg(conversationId, messageClientId, {
+      quickCommentSummaries: summaries,
+      quickCommentLoaded: loaded,
+    });
+  }
+
+  private _withQuickCommentState(msg: V2NIMMessageForUI): V2NIMMessageForUI {
+    if (!msg.messageClientId) {
+      return msg;
+    }
+
+    const entry = this.quickCommentCache.get(msg.messageClientId);
+
+    if (!entry) {
+      return msg;
+    }
+
+    return {
+      ...msg,
+      quickCommentSummaries: entry.summaries,
+      quickCommentLoaded: entry.loaded,
+    };
+  }
+
+  private _getQuickCommentWriteKey(messageClientId: string, index: number): string {
+    return `${messageClientId}:${index}`;
+  }
+
+  private _createMessageRefer(msg: V2NIMMessage): V2NIMMessageRefer {
+    return {
+      senderId: msg.senderId,
+      receiverId: msg.receiverId,
+      messageClientId: msg.messageClientId,
+      messageServerId: msg.messageServerId,
+      conversationType: msg.conversationType,
+      conversationId: msg.conversationId,
+      createTime: msg.createTime,
+    };
   }
 
   handleReceiveAIMsg(msg: V2NIMMessageForUI): V2NIMMessageForUI {
@@ -1224,7 +1898,8 @@ export class MsgStore {
   }
 
   handleMsgForSDK(msg: V2NIMMessageForUI): V2NIMMessage {
-    const { __kit__isSelf, __kit__senderId, ...rest } = msg;
+    const { __kit__isSelf, __kit__senderId, quickCommentSummaries, quickCommentLoaded, ...rest } =
+      msg;
 
     let { senderId, isSelf } = msg;
 
@@ -1705,8 +2380,40 @@ export class MsgStore {
     }
   }
 
-  private _onMessageQuickCommentNotification() {
-    // 暂不支持
+  private _onMessageQuickCommentNotification(data: V2NIMMessageQuickCommentNotification) {
+    this.logger?.log("_onMessageQuickCommentNotification: ", data);
+    const messageRefer = data.quickComment?.messageRefer;
+    const messageClientId = messageRefer?.messageClientId;
+
+    if (!messageClientId) {
+      return;
+    }
+
+    const conversationId = messageRefer?.conversationId;
+    const msg = conversationId
+      ? this.getMsg(conversationId, [messageClientId])[0]
+      : this.getMsg().find((item) => item.messageClientId === messageClientId);
+
+    if (!msg) {
+      const cached = this.quickCommentCache.get(messageClientId);
+
+      if (cached) {
+        const summaries = this._aggregateQuickCommentsFromNotification(cached.summaries, data);
+        this._setQuickCommentCacheEntry(messageClientId, summaries, cached.complete);
+        return;
+      }
+
+      const summaries = this._createQuickCommentsFromNotification(data);
+
+      if (summaries) {
+        this._setQuickCommentCacheEntry(messageClientId, summaries, false);
+      }
+      return;
+    }
+
+    this.loadQuickCommentsForMessage(msg, true).catch((error) => {
+      this.logger?.warn("_onMessageQuickCommentNotification refresh failed: ", error);
+    });
   }
 
   private async _onMessageRevokeNotifications(data: V2NIMMessageRevokeNotification[]) {

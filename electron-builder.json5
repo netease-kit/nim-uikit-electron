@@ -40,5 +40,5 @@
     target: ["deb"],
     icon: "src/assets/icon.png",
     artifactName: "nim-linux-${version}-${arch}.${ext}",
-  },
+  }
 }

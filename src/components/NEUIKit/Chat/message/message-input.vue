@@ -47,11 +47,7 @@
               :text="replyMsg.text"
             />
             <div v-else>
-              {{
-                replyMsg?.messageType
-                  ? `[${getReplyMsgTypeText(replyMsg)}]`
-                  : "[Unknown]"
-              }}
+              {{ replyMsg?.messageType ? `[${getReplyMsgTypeText(replyMsg)}]` : "[Unknown]" }}
             </div>
           </div>
         </div>
@@ -61,9 +57,10 @@
             id="msg-input"
             ref="msgInputRef"
             class="msg-textarea"
-            :placeholder="isTeamMute ? t('teamMuteText') : inputPlaceholder"
+            :placeholder="inputPlaceholderText"
             v-model="inputText"
-            :disabled="isTeamMute"
+            :disabled="isInputDisabled"
+            :readonly="isInputDisabled"
             :focus="isFocus"
             :autoResize="true"
             :minRows="1"
@@ -76,15 +73,15 @@
           >
           </Textarea>
 
-          <div class="msg-input-icons">
-            <div class="input-icon">
+          <div class="msg-input-icons" :class="{ 'msg-input-icons--disabled': isInputDisabled }">
+            <div class="input-icon" :class="{ 'input-icon--disabled': isInputDisabled }">
               <Popover
                 ref="emojiPopoverRef"
                 trigger="click"
                 placement="top"
                 align="center"
                 :alignOffset="-50"
-                :disabled="isTeamMute"
+                :disabled="isInputDisabled"
                 v-model="emojiPopoverVisible"
                 :offset="30"
               >
@@ -94,12 +91,12 @@
                 </template>
               </Popover>
             </div>
-            <div class="input-icon">
+            <div class="input-icon" :class="{ 'input-icon--disabled': isInputDisabled }">
               <Popover
                 trigger="hover"
                 placement="top"
                 maxWidth="80px"
-                :disabled="isTeamMute"
+                :disabled="isInputDisabled"
                 :bodyStyle="{ padding: '4px', width: '80px' }"
               >
                 <Icon :size="20" type="icon-tupian" />
@@ -117,12 +114,23 @@
                 </template>
               </Popover>
             </div>
-            <div class="input-icon">
-              <Icon @click="handleSendFileMsg" :size="19" type="icon-file" />
+            <div class="input-icon" :class="{ 'input-icon--disabled': isInputDisabled }">
+              <Icon
+                @click="handleSendFileMsg"
+                :size="19"
+                type="icon-file"
+                :aria-disabled="isInputDisabled"
+              />
             </div>
-            <div class="input-icon">
+            <div class="input-icon" :class="{ 'input-icon--disabled': isInputDisabled }">
               <Icon v-if="!inputText.length" :size="20" type="icon-send-default" />
-              <Icon v-else @click="handleSendTextMsg" :size="20" type="icon-send-selected" />
+              <Icon
+                v-else
+                @click="handleSendTextMsg"
+                :size="20"
+                type="icon-send-selected"
+                :aria-disabled="isInputDisabled"
+              />
             </div>
           </div>
         </div>
@@ -147,6 +155,7 @@ import Icon from "../../CommonComponents/Icon.vue";
 import { ref, computed, onUnmounted, onMounted, nextTick, watch } from "vue";
 import { ALLOW_AT, events, AT_ALL_ACCOUNT } from "../../utils/constants";
 import { getReplyMsgTypeText } from "../../utils/msg";
+import { isMessageNoError } from "../../utils/msg";
 import { V2NIMMessage } from "node-nim/types/v2_def/v2_nim_struct_def";
 import { t } from "../../utils/i18n";
 import MessageOneLine from "../../CommonComponents/MessageOneLine.vue";
@@ -206,6 +215,7 @@ const isTeamOwner = ref(false);
 const isTeamManager = ref(false);
 // 群禁言状态
 const isTeamMute = ref(false);
+const isTopicInputBlocked = ref(false);
 // 选中@成员
 const selectedAtMembers = ref<{ accountId: string; appellation: string }[]>([]);
 //输入框ref
@@ -215,6 +225,31 @@ const inputWrapperRef = ref();
 // @时使用 在现有的 ref 定义附近添加
 const cursorPosition = ref(0); // 记录光标位置
 const atPosition = ref(0); // 记录@符号的位置
+
+const isInputDisabled = computed(() => isTeamMute.value || isTopicInputBlocked.value);
+
+const inputPlaceholderText = computed(() => {
+  if (isTeamMute.value) {
+    return t("teamMuteText");
+  }
+  if (isTopicInputBlocked.value) {
+    return t("topicSubsessionRetryFirstMessageTip");
+  }
+  return props.inputPlaceholder;
+});
+
+const isFailedMessage = (message?: V2NIMMessageForUI) => {
+  if (!message) {
+    return false;
+  }
+
+  const errorCode = message.messageStatus?.errorCode;
+  return (
+    message.sendingState ===
+      V2NIMConst.V2NIMMessageSendingState.V2NIM_MESSAGE_SENDING_STATE_FAILED ||
+    (errorCode !== undefined && !isMessageNoError(errorCode))
+  );
+};
 
 /** 是否允许@ 所有人 */
 const allowAtAll = computed(() => {
@@ -250,7 +285,7 @@ const updateTeamMute = (teamMute: V2NIMTeamChatBannedMode) => {
 
 // 发送图片和视频消息（通过 IPC 调用主进程对话框）
 const handleImgActionItemClick = async (key: string) => {
-  if (isTeamMute.value) return;
+  if (isInputDisabled.value) return;
   if (key === "img") {
     await handleChooseImage();
   } else if (key === "video") {
@@ -260,6 +295,11 @@ const handleImgActionItemClick = async (key: string) => {
 
 // 处理输入框聚焦
 const handleInputFocus = () => {
+  if (isInputDisabled.value) {
+    isFocus.value = false;
+    msgInputRef.value?.blur?.();
+    return;
+  }
   isFocus.value = true;
   // 记录当前光标位置
   if (msgInputRef.value && msgInputRef.value.textareaRef) {
@@ -278,6 +318,11 @@ const handleInputBlur = () => {
 
 // 处理输入框内容变化
 const handleInputChange = (event: InputEvent) => {
+  if (isInputDisabled.value) {
+    mentionPopoverVisible.value = false;
+    msgInputRef.value?.blur?.();
+    return;
+  }
   // 获取当前光标位置
   if (msgInputRef.value && msgInputRef.value.textareaRef) {
     cursorPosition.value = msgInputRef.value.textareaRef.selectionStart || 0;
@@ -297,6 +342,7 @@ const handleInputChange = (event: InputEvent) => {
 
 // 处理mention选择
 const handleMentionSelect = (member: { accountId: string; appellation: string }) => {
+  if (isInputDisabled.value) return;
   const nickInTeam = member.appellation;
   selectedAtMembers.value = [
     ...selectedAtMembers.value.filter((item) => item.accountId !== member.accountId),
@@ -347,6 +393,53 @@ const handleSendMsgError = (errCode: number) => {
       toast.error(t("sendMsgFailedText"));
       break;
   }
+};
+
+const sendMessageByCurrentMode = async (params: {
+  msg: V2NIMMessage;
+  conversationId: string;
+  previewImg?: string;
+  previewWidth?: number;
+  previewHeight?: number;
+  progress?: (percentage: number) => boolean | void;
+  sendBefore?: () => void;
+  serverExtension?: any;
+}) => {
+  if (store?.isAIBotTopicConversation(params.conversationId)) {
+    if (isInputDisabled.value || store.topicStore.isTopicInputBlocked(params.conversationId)) {
+      toast.error(t("topicSubsessionRetryFirstMessageTip"));
+      throw new Error("Cannot send more topic messages before retrying first message.");
+    }
+    const repliedMessage = store.msgStore.getReplyMsgActive(params.conversationId);
+    params.sendBefore?.();
+    const topicSendOptions = {
+      previewImg: params.previewImg,
+      previewWidth: params.previewWidth,
+      previewHeight: params.previewHeight,
+      progress: params.progress,
+    };
+    if (
+      repliedMessage &&
+      params.msg.messageType === V2NIMConst.V2NIMMessageType.V2NIM_MESSAGE_TYPE_TEXT
+    ) {
+      await store.topicStore.replyTopicMessage(
+        params.conversationId,
+        params.msg,
+        repliedMessage,
+        topicSendOptions
+      );
+      isReplyMsg.value = false;
+      replyMsg.value = undefined;
+    } else {
+      await store.topicStore.sendTopicMessage(params.conversationId, params.msg, topicSendOptions);
+    }
+    return;
+  }
+
+  await store?.msgStore.sendMessageActive({
+    ...params,
+    progress: params.progress ? (percentage: number) => !!params.progress?.(percentage) : undefined,
+  });
 };
 
 /** 处理选中的@ 成员 */
@@ -402,7 +495,7 @@ const onAtMembersExtHandler = () => {
 // 发送文本消息
 const handleSendTextMsg = async () => {
   if (inputText.value.trim() === "") return;
-  if (isTeamMute.value) return;
+  if (isInputDisabled.value) return;
 
   // 处理跳转状态
   await handleJumpStateBeforeSend(props.conversationId, "发送文本消息");
@@ -411,16 +504,15 @@ const handleSendTextMsg = async () => {
   const textMsg = nim?.messageCreator?.createTextMessage(text) as V2NIMMessage;
   const ext = onAtMembersExtHandler();
   isReplyMsg.value = false;
-  store?.msgStore
-    .sendMessageActive({
-      msg: textMsg,
-      conversationId: props.conversationId,
-      serverExtension: selectedAtMembers.value.length && (ext as any),
+  sendMessageByCurrentMode({
+    msg: textMsg,
+    conversationId: props.conversationId,
+    serverExtension: selectedAtMembers.value.length && (ext as any),
 
-      sendBefore: () => {
-        scrollBottom();
-      },
-    })
+    sendBefore: () => {
+      scrollBottom();
+    },
+  })
     .catch((err) => {
       handleSendMsgError(err?.code);
     })
@@ -446,8 +538,8 @@ const removeReplyMsg = () => {
 };
 
 // 点击表情
-const handleEmoji = (emoji: { key: string; type: string }) => {
-  if (isTeamMute.value) return;
+const handleEmoji = (emoji: { key: string; type: string; index?: number }) => {
+  if (isInputDisabled.value) return;
   // 获取当前光标位置
   let currentCursorPos = cursorPosition.value;
 
@@ -482,7 +574,7 @@ const handleEmoji = (emoji: { key: string; type: string }) => {
 
 // 发送文件消息（通过 IPC 调用主进程对话框）
 const handleSendFileMsg = async () => {
-  if (isTeamMute.value) return;
+  if (isInputDisabled.value) return;
   await handleChooseFile();
 };
 
@@ -518,7 +610,7 @@ const handleChooseFile = async () => {
     const sceneName = "nim_default_im";
     const fileMsg = nim?.messageCreator?.createFileMessage(file.url, file.name, sceneName);
 
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: fileMsg as V2NIMMessage,
       conversationId: props.conversationId,
       progress: () => true,
@@ -572,7 +664,7 @@ const handleChooseVideo = async () => {
       width
     );
 
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: videoMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg,
@@ -613,7 +705,7 @@ const handleChooseImage = async () => {
       try {
         const fileMsg = nim?.messageCreator?.createFileMessage(file.url, file.name, sceneName);
 
-        await store?.msgStore.sendMessageActive({
+        await sendMessageByCurrentMode({
           msg: fileMsg as V2NIMMessage,
           conversationId: props.conversationId,
           progress: () => true,
@@ -642,7 +734,7 @@ const handleChooseImage = async () => {
       height
     );
 
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: imgMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg,
@@ -662,7 +754,10 @@ const handleChooseImage = async () => {
 // 处理粘贴事件
 const handlePaste = async (event: ClipboardEvent) => {
   // 群禁言状态不处理
-  if (isTeamMute.value) return;
+  if (isInputDisabled.value) {
+    event.preventDefault();
+    return;
+  }
 
   const clipboardData = event.clipboardData;
   if (!clipboardData) return;
@@ -762,7 +857,7 @@ const sendImageMessage = async (fileInfo: {
   );
 
   try {
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: imgMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg: fileInfo.base64,
@@ -806,7 +901,7 @@ const sendVideoMessage = async (fileInfo: {
   );
 
   try {
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: videoMsg as V2NIMMessage,
       conversationId: props.conversationId,
       previewImg: fileInfo.base64,
@@ -837,7 +932,7 @@ const sendFileMessage = async (fileInfo: { url: string; name: string; size: numb
   const fileMsg = nim?.messageCreator?.createFileMessage(fileInfo.url, fileInfo.name, sceneName);
 
   try {
-    await store?.msgStore.sendMessageActive({
+    await sendMessageByCurrentMode({
       msg: fileMsg as V2NIMMessage,
       conversationId: props.conversationId,
       progress: () => true,
@@ -853,44 +948,96 @@ const sendFileMessage = async (fileInfo: { url: string; name: string; size: numb
 };
 
 let teamWatch = () => {};
+let topicInputWatch = () => {};
+
+const stopTeamWatch = () => {
+  teamWatch();
+  teamWatch = () => {};
+};
+
+const stopTopicInputWatch = () => {
+  topicInputWatch();
+  topicInputWatch = () => {};
+};
+
+const closeInputPanels = () => {
+  emojiPopoverVisible.value = false;
+  mentionPopoverVisible.value = false;
+  sendMoreVisible.value = false;
+};
+
+const syncTopicInputWatch = () => {
+  stopTopicInputWatch();
+  isTopicInputBlocked.value = false;
+
+  topicInputWatch = autorun(() => {
+    if (!props.conversationId || !store?.isAIBotTopicConversation(props.conversationId)) {
+      isTopicInputBlocked.value = false;
+      return;
+    }
+
+    const topicState = store.topicStore.getState(props.conversationId);
+    const selected = topicState.selected;
+    const topicKey =
+      selected.type === "draft"
+        ? selected.topicId || topicState.draft?.topicId
+        : selected.type === "topic"
+          ? selected.topicId
+          : undefined;
+    const firstTopicMessage = topicKey
+      ? (store.topicStore.getTopicMessages(props.conversationId, topicKey)[0] as
+          | V2NIMMessageForUI
+          | undefined)
+      : undefined;
+    const storeBlocked = store.topicStore.isTopicInputBlocked(props.conversationId);
+    const firstMessageFailed = isFailedMessage(firstTopicMessage);
+    isTopicInputBlocked.value = storeBlocked || firstMessageFailed;
+    if (isTopicInputBlocked.value) {
+      closeInputPanels();
+      msgInputRef.value?.blur?.();
+    }
+  });
+};
+
+const syncTeamWatch = () => {
+  stopTeamWatch();
+
+  teamWatch = autorun(() => {
+    if (props.conversationType !== V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM) {
+      isTeamMute.value = false;
+      return;
+    }
+
+    const _team: V2NIMTeam = store?.teamStore.teams.get(props.to) as V2NIMTeam;
+
+    teamMembers.value = store?.teamMemberStore.getTeamMember(props.to) as V2NIMTeamMember[];
+
+    const myUser = store?.userStore.myUserInfo;
+    isTeamOwner.value = _team?.ownerAccountId == myUser?.accountId;
+    isTeamManager.value = teamMembers.value
+      .filter(
+        (item) => item.memberRole === V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
+      )
+      .some((member) => member.accountId === (myUser ? myUser.accountId : ""));
+    team.value = _team;
+
+    updateTeamMute(_team?.chatBannedMode as V2NIMTeamChatBannedMode);
+  });
+};
 
 watch(
-  () => props.conversationId,
-  (newConversationId, oldConversationId) => {
-    if (newConversationId !== oldConversationId) {
-      // 重置所有状态
-      isTeamMute.value = false;
-      isTeamOwner.value = false;
-      isTeamManager.value = false;
-      team.value = undefined;
-      teamMembers.value = [];
-      mentionPopoverVisible.value = false;
-      inputText.value = "";
-      //移除上一次监听
-      teamWatch();
-
-      teamWatch = autorun(() => {
-        if (
-          props.conversationType === V2NIMConst.V2NIMConversationType.V2NIM_CONVERSATION_TYPE_TEAM
-        ) {
-          const _team: V2NIMTeam = store?.teamStore.teams.get(props.to) as V2NIMTeam;
-
-          teamMembers.value = store?.teamMemberStore.getTeamMember(props.to) as V2NIMTeamMember[];
-
-          const myUser = store?.userStore.myUserInfo;
-          isTeamOwner.value = _team?.ownerAccountId == myUser?.accountId;
-          isTeamManager.value = teamMembers.value
-            .filter(
-              (item) =>
-                item.memberRole === V2NIMConst.V2NIMTeamMemberRole.V2NIM_TEAM_MEMBER_ROLE_MANAGER
-            )
-            .some((member) => member.accountId === (myUser ? myUser.accountId : ""));
-          team.value = _team;
-
-          updateTeamMute(_team?.chatBannedMode as V2NIMTeamChatBannedMode);
-        }
-      });
-    }
+  () => [props.conversationId, props.conversationType, props.to] as const,
+  () => {
+    // 重置所有状态
+    isTeamMute.value = false;
+    isTeamOwner.value = false;
+    isTeamManager.value = false;
+    team.value = undefined;
+    teamMembers.value = [];
+    closeInputPanels();
+    inputText.value = "";
+    syncTopicInputWatch();
+    syncTeamWatch();
   },
   { immediate: true }
 );
@@ -928,12 +1075,15 @@ onMounted(() => {
       isReplyMsg.value = true;
     }
 
-    inputText.value = msg?.oldText || "";
-    isFocus.value = true;
+    if (!isInputDisabled.value) {
+      inputText.value = msg?.oldText || "";
+      isFocus.value = true;
+    }
   });
 
   // 回复消息
   emitter.on(events.REPLY_MSG, async (msg) => {
+    if (isInputDisabled.value) return;
     isReplyMsg.value = true;
     isFocus.value = true;
     replyMsg.value = msg as V2NIMMessageForUI;
@@ -950,6 +1100,7 @@ onMounted(() => {
 
   // @提及成员
   emitter.on(events.AIT_TEAM_MEMBER, (member) => {
+    if (isInputDisabled.value) return;
     const beReplyMember = member as { accountId: string; appellation: string };
     selectedAtMembers.value = [
       ...selectedAtMembers.value.filter((item) => item.accountId !== beReplyMember.accountId),
@@ -963,7 +1114,8 @@ onMounted(() => {
 
 onUnmounted(() => {
   removeReplyMsg();
-  teamWatch();
+  stopTeamWatch();
+  stopTopicInputWatch();
   emitter.off(events.ON_REEDIT_MSG);
   emitter.off(events.REPLY_MSG);
   emitter.off(events.CLOSE_PANEL);
@@ -1006,6 +1158,10 @@ onUnmounted(() => {
 .msg-input-icons {
   display: flex;
   margin-right: 10px;
+}
+
+.msg-input-icons--disabled {
+  pointer-events: none;
 }
 .input-inner {
   flex: 1;
@@ -1169,6 +1325,11 @@ onUnmounted(() => {
   cursor: pointer;
 }
 
+.input-icon--disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .input-text {
   white-space: nowrap;
   color: #000;
@@ -1220,6 +1381,7 @@ onUnmounted(() => {
 }
 
 .img-popover-menu {
+  box-sizing: border-box;
   width: 76px;
   max-width: 76px;
   padding: 4px;
@@ -1227,6 +1389,7 @@ onUnmounted(() => {
 }
 
 .img-popover-item {
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   padding: 4px;

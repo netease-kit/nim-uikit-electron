@@ -103,12 +103,16 @@ export class UiStore {
 
     // 重置会话未读数
     if (conversationId) {
-      if (this.localOptions?.enableCloudConversation) {
-        this.rootStore.conversationStore?.resetConversationAit(conversationId);
-        await this.rootStore.conversationStore?.resetConversation(conversationId);
-      } else {
-        this.rootStore.localConversationStore?.resetConversationAit(conversationId);
-        await this.rootStore.localConversationStore?.resetConversation(conversationId);
+      const shouldResetConversation = !this.rootStore.isAIBotTopicConversation(conversationId);
+
+      if (shouldResetConversation) {
+        if (this.localOptions?.enableCloudConversation) {
+          this.rootStore.conversationStore?.resetConversationAit(conversationId);
+          await this.rootStore.conversationStore?.resetConversation(conversationId);
+        } else {
+          this.rootStore.localConversationStore?.resetConversationAit(conversationId);
+          await this.rootStore.localConversationStore?.resetConversation(conversationId);
+        }
       }
     }
   }
@@ -136,6 +140,8 @@ export class UiStore {
       res = "myself";
     } else if (this.rootStore.aiUserStore.aiUsers.has(account)) {
       res = "ai";
+    } else if (this.rootStore.aiUserStore.aiBots.has(account)) {
+      res = "aiBot";
     } else if (this.rootStore.friendStore.friends.has(account)) {
       res = "friend";
     } else {
@@ -193,6 +199,12 @@ export class UiStore {
 
     if (aiUser) {
       return aiUser.name || account;
+    }
+
+    const aiBot = this.rootStore.aiUserStore.aiBots.get(account);
+
+    if (aiBot) {
+      return aiBot.name || account;
     }
 
     const friend = this.rootStore.friendStore.friends.get(account);

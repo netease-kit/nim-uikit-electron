@@ -82,10 +82,12 @@ import IconA66 from "../static/icons/icon-a-66.png";
 import IconA67 from "../static/icons/icon-a-67.png";
 import IconA68 from "../static/icons/icon-a-68.png";
 import IconA70 from "../static/icons/icon-a-70.png";
+import IconA71 from "../static/icons/icon-a-71.png";
 import IconAFrame7 from "../static/icons/icon-a-Frame7.png";
 import IconAFrame8 from "../static/icons/icon-a-Frame8.png";
 import IconAddition from "../static/icons/icon-addition.png";
 import IconBiaoqing from "../static/icons/icon-biaoqing.png";
+import IconBot from "../static/icons/bot.png";
 import IconChehui from "../static/icons/icon-chehui.png";
 import IconChuangjianqunzu from "../static/icons/icon-chuangjianqunzu.png";
 import IconComputed from "../static/icons/icon-computed.png";
@@ -267,6 +269,7 @@ const urlMap = {
   "icon-a-67": IconA67,
   "icon-a-68": IconA68,
   "icon-a-70": IconA70,
+  "icon-a-71": IconA71,
   "icon-a-Frame7": IconAFrame7,
   "icon-a-Frame8": IconAFrame8,
   "icon-addition": IconAddition,
@@ -285,6 +288,7 @@ const urlMap = {
   "icon-jiantou": IconJiantou,
   "icon-jiaruqunzu": IconJiaruqunzu,
   "icon-kefu": IconKefu,
+  "icon-bot": IconBot,
   "icon-lahei": IconLahei,
   "icon-lishixiaoxi": IconLishixiaoxi,
   "icon-more": IconMore,

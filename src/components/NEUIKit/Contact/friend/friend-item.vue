@@ -15,8 +15,8 @@ import Avatar from "../../CommonComponents/Avatar.vue";
 import { ref, onUnmounted } from "vue";
 import { getContextState } from "../../utils/init";
 import { autorun } from "mobx";
-import { V2NIMUserStatusType } from "node-nim";
 import { t } from "../../utils/i18n";
+import { isUserStatusOnline } from "../../utils/user-status";
 const { store } = getContextState();
 
 const emit = defineEmits(["click"]);
@@ -35,11 +35,9 @@ const statusWatch = autorun(() => {
   const stateMap = store?.subscriptionStore.stateMap;
 
   if (loginStateVisible) {
-    isOnline.value =
-      stateMap?.get(friend.accountId)?.statusType ===
-      V2NIMUserStatusType.V2NIM_USER_STATUS_TYPE_LOGIN
-        ? `(${t("userOnlineText")})`
-        : `(${t("userOfflineText")})`;
+    isOnline.value = isUserStatusOnline(stateMap?.get(friend.accountId))
+      ? `(${t("userOnlineText")})`
+      : `(${t("userOfflineText")})`;
   }
 });
 

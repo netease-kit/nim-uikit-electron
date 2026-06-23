@@ -4,8 +4,19 @@ import {
   V2NIMAIModelCallContent,
   V2NIMAIModelCallResult,
   V2NIMAIUser,
+  V2NIMBindUserAIBotToQrCodeParams,
+  V2NIMCreateUserAIBotParams,
+  V2NIMCreateUserAIBotResult,
+  V2NIMDeleteUserAIBotParams,
   V2NIMProxyAIModelCallParams,
   V2NIMError,
+  V2NIMGetUserAIBotListParams,
+  V2NIMGetUserAIBotListResult,
+  V2NIMGetUserAIBotParams,
+  V2NIMRefreshUserAIBotTokenParams,
+  V2NIMRefreshUserAIBotTokenResult,
+  V2NIMUpdateUserAIBotParams,
+  V2NIMUserAIBot,
 } from "node-nim/types/v2_def/v2_nim_struct_def";
 import RootStore from "./index";
 import { AIUserServerExt, LocalOptions } from "./types";
@@ -13,6 +24,7 @@ import * as storeUtils from "./utils";
 
 export class AIUserStore {
   aiUsers: Map<string, V2NIMAIUser> = new Map();
+  aiBots: Map<string, V2NIMUserAIBot> = new Map();
   aiReqMsgs: V2NIMAIModelCallContent[] = [];
   aiResMsgs: string[] = [];
   logger: typeof storeUtils.logger | null = null;
@@ -43,6 +55,7 @@ export class AIUserStore {
 
   resetState(): void {
     this.aiUsers.clear();
+    this.aiBots.clear();
     this.aiReqMsgs = [];
     this.aiResMsgs = [];
   }
@@ -68,6 +81,22 @@ export class AIUserStore {
   removeAIUsers(accounts: string[]): void {
     accounts.forEach((item) => {
       this.aiUsers.delete(item);
+    });
+  }
+
+  /** 内存中增加用户级 AI Bot */
+  addAIBots(bots: V2NIMUserAIBot[]): void {
+    bots
+      .filter((item) => !!item.accountId)
+      .forEach((item) => {
+        this.aiBots.set(item.accountId, item);
+      });
+  }
+
+  /** 内存中删除用户级 AI Bot */
+  removeAIBots(accountIds: string[]): void {
+    accountIds.forEach((accountId) => {
+      this.aiBots.delete(accountId);
     });
   }
 
@@ -201,6 +230,13 @@ export class AIUserStore {
   }
 
   /**
+   * 判断是否用户级 AI Bot
+   */
+  isAIBot(accountId: string): boolean {
+    return this.aiBots.has(accountId);
+  }
+
+  /**
    * 重置 AI 代理状态
    */
   resetAIProxy(): void {
@@ -227,6 +263,204 @@ export class AIUserStore {
     } catch (error) {
       // 未开通ai聊功能的 此处不需要报错
       this.logger?.log("getAIUserListActive failed:", error);
+    }
+  }
+
+  /**
+   * 创建一个用户级 AI Bot。
+   */
+  async createUserAIBotActive(
+    params: V2NIMCreateUserAIBotParams
+  ): Promise<V2NIMCreateUserAIBotResult> {
+    try {
+      this.logger?.log("createUserAIBotActive", params);
+      const result = await this.nim.aiService?.createUserAIBot(params);
+
+      if (!result) {
+        throw new Error("createUserAIBot failed");
+      }
+
+      const bot = await this.nim.aiService?.getUserAIBot({
+        accountId: params.accountId,
+      });
+
+      this.addAIBots([
+        {
+          ...bot,
+          accountId: bot?.accountId || params.accountId,
+          name: bot?.name || params.name,
+          avatar: bot?.avatar || params.avatar,
+        },
+      ]);
+
+      this.logger?.log("createUserAIBotActive success:", bot);
+      return result;
+    } catch (error) {
+      this.logger?.error("createUserAIBotActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 分页查询当前用户的 AI Bot 列表。
+   */
+  async getUserAIBotListActive(
+    params?: V2NIMGetUserAIBotListParams
+  ): Promise<V2NIMGetUserAIBotListResult> {
+    try {
+      this.logger?.log("getUserAIBotListActive", params);
+      const result = await this.nim.aiService?.getUserAIBotList(params);
+
+      if (!result) {
+        return {
+          bots: [],
+          hasMore: false,
+        };
+      }
+
+      this.addAIBots(result.bots);
+      this.logger?.log("getUserAIBotListActive success:", result);
+      return result;
+    } catch (error) {
+      this.logger?.error("getUserAIBotListActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 查询单个用户级 AI Bot 详情。
+   */
+  async getUserAIBotActive(params: V2NIMGetUserAIBotParams): Promise<V2NIMUserAIBot> {
+    try {
+      this.logger?.log("getUserAIBotActive", params);
+      const result = await this.nim.aiService?.getUserAIBot(params);
+
+      if (!result) {
+        throw new Error("getUserAIBot failed");
+      }
+
+      this.addAIBots([result]);
+      this.logger?.log("getUserAIBotActive success:", result);
+      return result;
+    } catch (error) {
+      this.logger?.error("getUserAIBotActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 更新一个用户级 AI Bot。
+   */
+  async updateUserAIBotActive(params: V2NIMUpdateUserAIBotParams): Promise<void> {
+    try {
+      this.logger?.log("updateUserAIBotActive", params);
+      await this.nim.aiService?.updateUserAIBot(params);
+      const bot = await this.nim.aiService?.getUserAIBot({
+        accountId: params.accountId,
+      });
+
+      if (bot) {
+        this.addAIBots([bot]);
+        this.updateAIBotConversationProfile(bot);
+      }
+
+      this.logger?.log("updateUserAIBotActive success:", params);
+    } catch (error) {
+      this.logger?.error("updateUserAIBotActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  private updateAIBotConversationProfile(bot: V2NIMUserAIBot): void {
+    const accountId = bot.accountId;
+    if (!accountId) {
+      return;
+    }
+
+    const conversationId =
+      this.nim.conversationIdUtil?.p2pConversationId(accountId) || "";
+    if (!conversationId) {
+      return;
+    }
+
+    const profile = {
+      name: bot.name,
+      avatar: bot.avatar,
+    };
+
+    const conversation =
+      this.rootStore.conversationStore?.conversations.get(conversationId);
+    if (conversation) {
+      this.rootStore.conversationStore?.updateConversation([
+        {
+          ...conversation,
+          ...profile,
+        },
+      ]);
+    }
+
+    const localConversation =
+      this.rootStore.localConversationStore?.conversations.get(conversationId);
+    if (localConversation) {
+      this.rootStore.localConversationStore?.updateConversation([
+        {
+          ...localConversation,
+          ...profile,
+        },
+      ]);
+    }
+  }
+
+  /**
+   * 删除一个用户级 AI Bot。
+   */
+  async deleteUserAIBotActive(params: V2NIMDeleteUserAIBotParams): Promise<void> {
+    try {
+      this.logger?.log("deleteUserAIBotActive", params);
+      await this.nim.aiService?.deleteUserAIBot(params);
+      this.removeAIBots([params.accountId]);
+      this.logger?.log("deleteUserAIBotActive success:", params);
+    } catch (error) {
+      this.logger?.error("deleteUserAIBotActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 刷新用户级 AI Bot 的登录 token。
+   */
+  async refreshUserAIBotTokenActive(
+    params: V2NIMRefreshUserAIBotTokenParams
+  ): Promise<V2NIMRefreshUserAIBotTokenResult> {
+    try {
+      this.logger?.log("refreshUserAIBotTokenActive", params);
+      const result = await this.nim.aiService?.refreshUserAIBotToken(params);
+
+      if (!result) {
+        throw new Error("refreshUserAIBotToken failed");
+      }
+
+      this.logger?.log("refreshUserAIBotTokenActive success:", result);
+      return result;
+    } catch (error) {
+      this.logger?.error("refreshUserAIBotTokenActive failed:", error as V2NIMError);
+      throw error;
+    }
+  }
+
+  /**
+   * 通过二维码绑定用户级 AI Bot。
+   */
+  async bindUserAIBotToQrCodeActive(
+    params: V2NIMBindUserAIBotToQrCodeParams
+  ): Promise<void> {
+    try {
+      this.logger?.log("bindUserAIBotToQrCodeActive", params);
+      await this.nim.aiService?.bindUserAIBotToQrCode(params);
+      this.logger?.log("bindUserAIBotToQrCodeActive success:", params);
+    } catch (error) {
+      this.logger?.error("bindUserAIBotToQrCodeActive failed:", error as V2NIMError);
+      throw error;
     }
   }
 

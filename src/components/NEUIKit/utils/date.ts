@@ -26,6 +26,14 @@ const isSameYear = (date1: Date, date2: Date): boolean => {
 };
 
 /**
+ * 辅助函数：判断日期是否是昨天
+ */
+const isYesterday = (date: Date, now: Date): boolean => {
+  const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
+  return isSameDay(date, yesterday);
+};
+
+/**
  * 辅助函数：格式化日期
  */
 const formatDateTime = (date: Date, format: string): string => {
@@ -129,5 +137,11 @@ export const formatDate = (time: string | number | undefined): string => {
   const isCurrentDay = isSameDay(date, now);
   const isCurrentYear = isSameYear(date, now);
 
-  return formatDateTime(date, isCurrentDay ? "HH:mm" : isCurrentYear ? "MM-DD" : "YYYY-MM-DD");
+  if (isCurrentDay) {
+    return formatDateTime(date, "HH:mm");
+  }
+  if (isYesterday(date, now)) {
+    return "昨天";
+  }
+  return formatDateTime(date, isCurrentYear ? "MM-DD" : "YYYY-MM-DD");
 };
